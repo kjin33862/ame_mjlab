@@ -1,0 +1,63 @@
+[project]
+name = "ame"
+version = "0.1.0"
+description = "AME (attention-based map encoding) perceptive locomotion for the Unitree G1, on mjlab"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mjlab[cu128]",
+    "torch>=2.7.0,<2.10.0",
+    # Imported directly; both already arrive with mjlab (rsl-rl-lib is pinned there).
+    "rsl-rl-lib",
+    "tensordict",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.18,<0.9.0"]
+build-backend = "uv_build"
+
+# mjlab's `train` / `play` / `list-envs` CLIs discover tasks through this group.
+[project.entry-points."mjlab.tasks"]
+ame = "ame"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.14.14",
+]
+
+[tool.uv.sources]
+mjlab = { git = "https://github.com/mujocolab/mjlab", rev = "898a700514f8d3c92146ec158190e6f2e4d8c11a" }
+mujoco-warp = { git = "https://github.com/google-deepmind/mujoco_warp", rev = "88b55fc2696960b927bc12584994bb8412b36558" }
+warp-lang = { index = "nvidia", marker = "sys_platform != 'darwin'" }
+torch = [
+  { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" },
+]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com/"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv]
+# Stable PyPI mujoco; relaxes mjlab's `mujoco~=3.8.0` cap.
+override-dependencies = ["mujoco>=3.8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+indent-width = 2
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # math unicode in docs is intentional

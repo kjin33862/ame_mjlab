@@ -94,3 +94,19 @@ Done
   invalid), `scripts/eval_memory_test.sh`.
 - Side check of the Isaac Lab tool: `actions, *_ = policy(obs)` there is correct (the AME policy returns
   `(actions, attention_weights)`); in mjlab the policy returns a tensor and the port uses `actions = policy(obs)`.
+- Default board on CPU: 8x8, 64 envs, random policy -> valid, 64/64 distinct tiles, spawn offset 0.0 m, step-1
+  displacement 0.5 mm, step-1 median height 0.78 m, host RSS 8.9 GB, build 20 s. Rollout on CPU is impractical
+  (13 steps in 25 min with 64 envs), so CPU is for pipeline checks only.
+
+Left to do (needs the GPU: reboot first, `nvidia-smi` must work)
+1. `uv run pytest` (CUDA path of the tests) and one GPU smoke run:
+   `uv run python scripts/evaluate.py --random_policy --max_steps 100`.
+2. Memory test: `bash scripts/eval_memory_test.sh` (64 / 128 / 225 envs on the 8x8 board, 200 steps each). Estimate
+   before measuring: ~1.9 / 2.3 / 3 GB GPU (README: ~1 GB + 5.7 MB/env on the training board; this board has 2x the
+   geoms). Record the result here and in docs/EVALUATION.md.
+3. With a trained checkpoint (from the 2080 Ti run): one full run at default settings; check that successes take
+   >= ~4 s (4 m at 1 m/s), `median_height_above_support_m` ~0.75, and that fail bodies make sense.
+   Then `MODELS="name=ckpt ..." bash scripts/run_noise_sweep.sh` and `uv run python scripts/aggregate_sweep.py`.
+4. Not verified: GPU determinism across reruns, SAP vs NXN broadphase equivalence, families other than stones.
+5. Optional: reduce host RAM of large boards (the O(ngeom^2) pair table in mujoco_warp `put_model`) only by
+   patching mujoco_warp; not done.

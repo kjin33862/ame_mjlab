@@ -28,7 +28,7 @@ import re
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 TAG_RE = re.compile(r"^sweep-(?P<cond>.+)-s(?P<seed>\d+)$")
@@ -169,8 +169,8 @@ def plot_axis(table: dict, axis: str, path: str, subtitle: str) -> bool:
         dodge = (i - (len(MODELS) - 1) / 2) * 0.012 * span  # keep the models' error bars from overlapping
         xs = [x + dodge for x, _ in pts]
         ys = [r["success_rate"] for _, r in pts]
-        err = [[y - r["success_ci95_lo"] for y, (_, r) in zip(ys, pts)],
-               [r["success_ci95_hi"] - y for y, (_, r) in zip(ys, pts)]]
+        err = [[y - r["success_ci95_lo"] for y, (_, r) in zip(ys, pts, strict=True)],
+               [r["success_ci95_hi"] - y for y, (_, r) in zip(ys, pts, strict=True)]]
         st = model_style(model)
         ax.errorbar(xs, ys, yerr=err, color=st["color"], marker=st["marker"], linestyle=st["linestyle"],
                     linewidth=2, markersize=7, capsize=3, elinewidth=1.2,

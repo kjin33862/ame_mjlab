@@ -149,19 +149,33 @@ Also check valid runs: `median_height_above_support_m` near 0.75, `truncated_by_
 
 ## Board size and memory
 
-The limit is **host RAM while the env is built**, not GPU memory. MuJoCo-Warp precomputes a table of all geom pairs
-on the CPU, which grows with the square of the geom count, and a stepping-stone tile has about 166 boxes
-(difficulty 0.5). Measured (build only, CPU):
+The board size (number of terrain geoms) is the limit, not the number of envs. MuJoCo-Warp builds a table of all
+geom pairs on the host while the env is built, and both host RAM and GPU memory grow roughly with the square of the
+geom count. A stepping-stone tile has about 166 boxes at difficulty 0.5. Measured on the RTX 5060 Laptop (8 GB)
+with 30 GB host RAM, one robot per tile, build under a 27 GB RAM cap without swap:
 
-| board | terrain geoms | host RAM peak | build time |
-|---|---|---|---|
-| 8 x 8 (default) | 10.6 k | 9 GB | 20 s |
-| 10 x 10 | 16.6 k | 20 GB | 51 s |
-| 12 x 12 | 23.9 k | 26 GB | 2 min |
-| 15 x 15 | 37.4 k | > 100 GB (extrapolated) | not possible on 30 GB |
+| board | terrain geoms | host RAM peak | GPU used by the run | build time |
+|---|---|---|---|---|
+| 8 x 8 (default) | 10.6 k | 9 GB | 1.3 GB | 20-45 s |
+| 10 x 10 | 16.6 k | 20 GB | 2.8 GB | 50 s |
+| 11 x 11 | 20.1 k | 26 GB | 3.9 GB | 77 s |
+| 12 x 12 | 23.9 k | 28 GB | 5.4 GB | 2 min |
+| 13 x 13 | 28 k | 29 GB | out of GPU memory | fails |
 
-For more samples, pool seeds (each seed is a new board) rather than enlarging the board. The GPU memory of 64 /
-128 / 225 envs is measured with `bash scripts/eval_memory_test.sh`. The training board (5.3 k geoms) is not affected.
+12 x 12 is the largest board that loads here, with almost no host RAM left; 10 x 10 is the largest comfortable
+one. For more samples, pool seeds (each seed is a new board) rather than enlarging the board.
+
+The number of envs costs little: on the 8 x 8 board (`bash scripts/eval_memory_test.sh`, random-init policy):
+
+| envs | GPU used by the run | torch peak | host RAM peak | wall time per step |
+|---|---|---|---|---|
+| 64 | 1.3 GB | 68 MB | 8.7 GB | 0.31 s |
+| 128 | 1.5 GB | 127 MB | 8.7 GB | 0.62 s |
+| 225 | 1.9 GB | 212 MB | 8.7 GB | 1.2 s |
+
+The step time grows with the number of envs (collision checks against the large board), so a full 1000-step
+episode takes about 5 min with 64 envs. "GPU used by the run" is the device-level peak minus the memory in use
+before the run. The training board (5.3 k geoms) is not affected.
 
 ## Differences from the Isaac Lab tool
 
@@ -175,7 +189,7 @@ For more samples, pool seeds (each seed is a new board) rather than enlarging th
   instead. Exit code 2 on an invalid run.
 - **Displacement** includes the terminal step of a terminated env (Isaac Lab reset the robot before it could be
   read).
-- **Board**: 8 x 8 by default instead of 15 x 15 (host RAM, see above). `--viz` is not ported; use `uv run play`
+- **Board**: 8 x 8 by default instead of 15 x 15 (memory, see above). `--viz` is not ported; use `uv run play`
   to watch a policy.
 - **Randomization**: friction U(0.3, 1.2) on the foot geoms and encoder bias, as in mjlab's play mode.
 

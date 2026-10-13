@@ -98,15 +98,42 @@ Done
   displacement 0.5 mm, step-1 median height 0.78 m, host RSS 8.9 GB, build 20 s. Rollout on CPU is impractical
   (13 steps in 25 min with 64 envs), so CPU is for pipeline checks only.
 
-Left to do (needs the GPU: reboot first, `nvidia-smi` must work)
-1. `uv run pytest` (CUDA path of the tests) and one GPU smoke run:
-   `uv run python scripts/evaluate.py --random_policy --max_steps 100`.
-2. Memory test: `bash scripts/eval_memory_test.sh` (64 / 128 / 225 envs on the 8x8 board, 200 steps each). Estimate
-   before measuring: ~1.9 / 2.3 / 3 GB GPU (README: ~1 GB + 5.7 MB/env on the training board; this board has 2x the
-   geoms). Record the result here and in docs/EVALUATION.md.
-3. With a trained checkpoint (from the 2080 Ti run): one full run at default settings; check that successes take
+## 2026-10-12 — STEP 3 (continued): GPU checks after the reboot
+
+- `nvidia-smi` OK (driver 580.178.04), torch sees the RTX 5060 Laptop. `uv run pytest`: 61 passed, 1 skipped.
+- GPU smoke run (`--random_policy --max_steps 100`, default 8x8, 64 envs): valid, 64/64 distinct tiles, spawn check
+  passed, median height above support 0.75 m, build 43 s (cold), GPU used by the run 1.3 GB. As on CPU, all random-
+  init robots end by `illegal_contact` (63 on `right_hip_roll_link`, 1 on `right_hip_yaw_link`), 0.20-1.48 s after
+  the start, so the episode ends after 74 steps (all envs done).
+- Memory test (`bash scripts/eval_memory_test.sh`, 8x8 board), all valid:
+
+  | envs | GPU used by run | torch peak | host RSS | wall time per step |
+  |---|---|---|---|---|
+  | 64 | 1342 MB | 68 MB | 8.7 GB | 0.31 s |
+  | 128 | 1500 MB | 127 MB | 8.7 GB | 0.62 s |
+  | 225 | 1862 MB | 212 MB | 8.7 GB | 1.2 s |
+
+  Below the estimate (1.9 / 2.3 / 3 GB). Step time is about linear in the number of envs (~5 ms per env-step), so a
+  full 1000-step episode with 64 envs is ~5 min; the sweep's 30 min timeout per run is enough for 8x8.
+- Largest board. The laptop has 30 GB of swap, so the earlier CPU numbers for 12x12 may have used swap. Re-measured
+  on GPU, one robot per tile, 5 steps, each run in `systemd-run --user --scope -p MemoryMax=27G -p MemorySwapMax=0`:
+
+  | board | geoms | host RSS peak | GPU used by run | build | result |
+  |---|---|---|---|---|---|
+  | 10x10 | 16,604 | 19.8 GB | 2.8 GB | 49 s | valid |
+  | 11x11 | 20,090 | 26.0 GB | 3.9 GB | 77 s | valid |
+  | 12x12 | 23,908 | 27.8 GB | 5.4 GB | 115 s | valid |
+  | 13x13 | ~28k | 28.7 GB | - | - | Warp CUDA out of memory during the build |
+
+  12x12 is the largest board that loads; it is at the RAM cap (likely under memory pressure), so 10x10 is the
+  largest comfortable one. GPU memory also grows ~quadratically with the geom count, so 13x13 fails on the 8 GB GPU
+  even with enough host RAM. The 8x8 default stays.
+- docs/EVALUATION.md: memory section rewritten with these numbers.
+
+Left to do
+1. With a trained checkpoint (from the 2080 Ti run): one full run at default settings; check that successes take
    >= ~4 s (4 m at 1 m/s), `median_height_above_support_m` ~0.75, and that fail bodies make sense.
    Then `MODELS="name=ckpt ..." bash scripts/run_noise_sweep.sh` and `uv run python scripts/aggregate_sweep.py`.
-4. Not verified: GPU determinism across reruns, SAP vs NXN broadphase equivalence, families other than stones.
-5. Optional: reduce host RAM of large boards (the O(ngeom^2) pair table in mujoco_warp `put_model`) only by
+2. Not verified: GPU determinism across reruns, SAP vs NXN broadphase equivalence, families other than stones.
+3. Optional: reduce memory of large boards (the O(ngeom^2) pair table in mujoco_warp `put_model`) only by
    patching mujoco_warp; not done.

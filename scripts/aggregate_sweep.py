@@ -2,7 +2,7 @@
 
 Copy of the Isaac Lab version (AME_Locomotion, eval-pipeline) with minimal changes for the mjlab port: models are
 grouped by "model_name" (any number of them), the drift axis is in grid cells, the extra fail reasons
-"orientation" and "blowup" are counted, and random-init runs are skipped.
+"orientation" and "blowup" are counted, and pipeline-test runs (random-init or zero policy) are skipped.
 
 Reads logs/eval_results/*sweep*/summary.json, keeps runs with "valid": true, pools seeds per (model, condition) and
 writes
@@ -86,8 +86,8 @@ def load_runs(results_dir: str) -> tuple[list[dict], list[str]]:
         if s.get("valid") is not True:
             skipped.append(f"{folder}: invalid ({s.get('invalid_reason', 'no valid flag')})")
             continue
-        if s.get("policy") == "random_init":
-            skipped.append(f"{folder}: random-init policy (pipeline test)")
+        if s.get("policy", "checkpoint") != "checkpoint":
+            skipped.append(f"{folder}: {s['policy']} policy (pipeline test)")
             continue
         m = TAG_RE.match(s.get("tag", ""))
         if not m:

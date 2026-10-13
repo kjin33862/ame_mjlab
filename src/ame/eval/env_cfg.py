@@ -51,8 +51,8 @@ OFF_HEIGHT_NOISE = {
 
 def eval_env_cfg(
   terrain: str = "stepping_stones",
-  num_rows: int = 10,
-  num_cols: int = 10,
+  num_rows: int = 8,
+  num_cols: int = 8,
   difficulty: float = 0.5,
   seed: int = 0,
   episode_s: float = 20.0,

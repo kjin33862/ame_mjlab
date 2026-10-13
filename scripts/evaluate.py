@@ -11,12 +11,13 @@ afterwards are ignored):
     stuck:   neither by the end of the episode
 
 Validity guard: the run is aborted, summary.json is written with "valid": false and the exit code is 2 if the
-spawn check fails at step 1 (a robot not at its tile center, or not standing on the terrain) or if more than 50% of
-envs fail by "height" within the first second.
+spawn check fails at step 1 (a robot not at its tile center, or not standing on the terrain), if more than 50% of
+envs fail by "height" within the first second, or if any env succeeds faster than 3 m/s on average.
 
 Examples:
     uv run python scripts/evaluate.py --checkpoint logs/rsl_rl/ame_g1/<run>/model_10000.pt --seed 0
     uv run python scripts/evaluate.py --random_policy --num_rows 2 --num_cols 2 --max_steps 50   # pipeline test
+    uv run python scripts/evaluate.py --zero_policy --num_rows 2 --num_cols 2 --episode_s 0.1   # time-out path
 """
 
 import argparse
@@ -52,14 +53,13 @@ EARLY_WINDOW_S = 1.0  # validity guard: window for early height fails
 EARLY_HEIGHT_FRAC = (
   0.5  # validity guard: max fraction of envs failing by height in that window
 )
-SPAWN_TOL_M = (
-  0.05  # spawn check: max distance of the reset position from the tile center
-)
-STEP1_DISP_TOL_M = 0.10  # spawn check: max displacement after the first policy step
-STEP1_HEIGHT_RANGE_M = (
-  0.5,
-  1.1,
-)  # spawn check: median base height above the support after the first step
+# spawn check: max distance of the reset position from the tile center, max displacement after the first policy
+# step, and the plausible range of the median base height above the support after the first step
+SPAWN_TOL_M = 0.05
+STEP1_DISP_TOL_M = 0.10
+STEP1_HEIGHT_RANGE_M = (0.5, 1.1)
+# speed check: a success faster than this mean speed is physically implausible (command 1 m/s)
+MAX_PLAUSIBLE_SPEED_MPS = 3.0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
     "--random_policy",
     action="store_true",
     help="Randomly initialized policy, no checkpoint. Pipeline tests only; results are meaningless.",
+  )
+  src.add_argument(
+    "--zero_policy",
+    action="store_true",
+    help="Zero actions (default joint pose), no checkpoint. Pipeline tests only (with a short --episode_s: the time-out).",
   )
   p.add_argument(
     "--model_name",
@@ -92,8 +97,13 @@ def build_parser() -> argparse.ArgumentParser:
     default=None,
     help="Default: num_rows x num_cols (one robot per tile).",
   )
-  p.add_argument("--num_rows", type=int, default=10)
-  p.add_argument("--num_cols", type=int, default=10)
+  p.add_argument(
+    "--num_rows",
+    type=int,
+    default=8,
+    help="Tile rows. 8x8 needs ~9 GB host RAM to build, 10x10 ~20 GB.",
+  )
+  p.add_argument("--num_cols", type=int, default=8)
   p.add_argument(
     "--difficulty",
     type=float,
@@ -251,19 +261,18 @@ def main():
   device = args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
   cuda = device.startswith("cuda")
   height_noise, proprio = resolve_noise(args)
-  checkpoint = (
-    None if args.random_policy else os.path.abspath(os.path.expanduser(args.checkpoint))
+  checkpoint = None
+  if args.checkpoint is not None:
+    checkpoint = os.path.abspath(os.path.expanduser(args.checkpoint))
+    if not os.path.isfile(checkpoint):
+      sys.exit(f"[ERROR] checkpoint not found: {checkpoint}")
+  policy_kind = (
+    "checkpoint" if checkpoint else ("zero" if args.zero_policy else "random_init")
   )
-  if checkpoint is not None and not os.path.isfile(checkpoint):
-    sys.exit(f"[ERROR] checkpoint not found: {checkpoint}")
   if args.model_name is None:
-    args.model_name = (
-      "random_init"
-      if checkpoint is None
-      else (
-        f"{os.path.basename(os.path.dirname(checkpoint))}_{os.path.splitext(os.path.basename(checkpoint))[0]}"
-      )
-    )
+    run_dir = os.path.basename(os.path.dirname(checkpoint)) if checkpoint else ""
+    stem = os.path.splitext(os.path.basename(checkpoint))[0] if checkpoint else ""
+    args.model_name = f"{run_dir}_{stem}" if checkpoint else policy_kind
 
   cuda_used_mb = (
     (lambda: (lambda f, t: (t - f) / 2**20)(*torch.cuda.mem_get_info(device)))
@@ -305,10 +314,11 @@ def main():
       "iter"
     )
   else:
-    print(
-      "[WARN] --random_policy: randomly initialized policy. Results are meaningless (pipeline test only)."
-    )
+    print(f"[WARN] {policy_kind} policy: results are meaningless (pipeline test only).")
   policy = runner.get_inference_policy(device=device)
+  if args.zero_policy:
+    num_actions = env.num_actions
+    policy = lambda obs: torch.zeros(env.num_envs, num_actions, device=device)  # noqa: E731
   arch = rl_cfg.actor.class_name.split(":")[-1]
   if cuda:
     cuda_peak = max(cuda_peak, cuda_used_mb())
@@ -374,7 +384,7 @@ def main():
 
   run_info = {
     "checkpoint": checkpoint,
-    "policy": "random_init" if checkpoint is None else "checkpoint",
+    "policy": policy_kind,
     "task": args.task,
     "arch": arch,
     "model_name": args.model_name,
@@ -396,9 +406,16 @@ def main():
     early_height = int(
       ((fail_reason == HEIGHT) & (fail_time <= EARLY_WINDOW_S + 1e-6)).sum()
     )
+    min_t = time_to_success[torch.isfinite(time_to_success)]
+    min_t = float(min_t.min()) if min_t.numel() else float("nan")
     reason = None
     if spawn_check.get("ok") is False:
       reason = f"spawn check failed: {spawn_check['problem']}"
+    elif min_t < args.success_dist / MAX_PLAUSIBLE_SPEED_MPS:
+      reason = (
+        f"a success after {min_t:.2f} s (> {MAX_PLAUSIBLE_SPEED_MPS:g} m/s mean speed); "
+        "physically implausible, probably a teleport or a reset bug"
+      )
     elif num_envs <= tiles_total and tiles_distinct != num_envs:
       reason = f"only {tiles_distinct} distinct tiles for {num_envs} envs"
     elif step >= early_steps and early_height > EARLY_HEIGHT_FRAC * num_envs:
@@ -412,6 +429,7 @@ def main():
       "spawn_check": spawn_check,
       "early_height_fails": early_height,
       "blowup_fails": int((fail_reason == 6).sum()),
+      "min_time_to_success_s": min_t,
       "checked_at_step": step,
     }
 

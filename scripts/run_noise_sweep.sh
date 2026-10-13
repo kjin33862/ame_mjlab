@@ -10,7 +10,7 @@
 #   MODELS="drift_on=logs/rsl_rl/ame_g1/<run>/model_10000.pt drift_off=logs/rsl_rl/ame_g1/<run2>/model_10000.pt" \
 #     nohup systemd-inhibit --what=sleep:idle --why="AME sweep" bash scripts/run_noise_sweep.sh \
 #       > logs/eval_results/sweep_master.log 2>&1 &
-# Optional: P1_SEEDS / P2_SEEDS (default "0 1 2"), NUM_ROWS / NUM_COLS (default 10), DIFFICULTY (default 0.5).
+# Optional: P1_SEEDS / P2_SEEDS (default "0 1 2"), NUM_ROWS / NUM_COLS (default 8; 10x10 needs ~20 GB host RAM), DIFFICULTY (default 0.5).
 
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -20,8 +20,8 @@ LOGDIR="$OUT/sweep_logs"
 MODELS="${MODELS:?set MODELS=\"name=checkpoint ...\"}"
 P1_SEEDS="${P1_SEEDS:-0 1 2}"
 P2_SEEDS="${P2_SEEDS:-0 1 2}"
-NUM_ROWS="${NUM_ROWS:-10}"
-NUM_COLS="${NUM_COLS:-10}"
+NUM_ROWS="${NUM_ROWS:-8}"
+NUM_COLS="${NUM_COLS:-8}"
 DIFFICULTY="${DIFFICULTY:-0.5}"
 RUN_TIMEOUT=1800  # [s] kill a hung run after 30 min
 FIXED=(--terrain stepping_stones --num_rows "$NUM_ROWS" --num_cols "$NUM_COLS" --difficulty "$DIFFICULTY")

@@ -58,3 +58,39 @@ Geom count (the size limit; measured on CPU, `np.triu_indices(ngeom)` in mujoco_
 | stones 8x8 / 10x10 / 15x15, d = 0.5 | 10.6k / 16.6k / 37.4k |
 
 15x15 needs ~7e8 geom pairs -> tens of GB host RAM: expected out of memory (30 GB). To be measured.
+
+## 2026-10-12 — STEP 2: plan (approved as proposed)
+
+- New files only: `src/ame/eval/` (env cfg, noise term, recorded termination), `scripts/evaluate.py`,
+  `scripts/aggregate_sweep.py` (copy), `scripts/run_noise_sweep.sh`, `scripts/eval_memory_test.sh`,
+  `tests/test_eval.py`, `docs/EVALUATION.md`. No existing file changed (no hook needed).
+- Domain randomization: match the Isaac Lab tool (user's choice): foot friction + encoder bias on, CoM offset off.
+- Defaults: difficulty 0.5, noise preset `train`, outputs under `logs/eval_results/` (already git-ignored).
+
+## 2026-10-12 — STEP 3: implementation and tests (CPU only; GPU blocked until reboot)
+
+Done
+- Commits on branch `eval` (git had no identity configured; commits use `-c user.name=eojin_kang
+  -c user.email=<account email>` per command, global config untouched).
+- `uv run pytest`: 61 passed, 1 skipped (17 new). The eval map term is bit-identical to the training term at the
+  training values for all 9 drift combinations. `ruff check .` clean.
+- mjlab runs on CPU (CUDA graphs are skipped), so every rollout check ran on CPU with `--device cpu`:
+  - random-init policy, 2x2 tiles: spawn offset from tile center 0.0 m, displacement after step 1 < 1 mm, median
+    height above support 0.78 m, 4 distinct tiles, outputs written, foot friction differs per env (0.43-0.82).
+  - every random/zero-policy robot ends by `illegal_contact` within ~0.25 s. Diagnosed with the MuJoCo contact list:
+    the hand collision geom (`right_hand_collision`, `right_wrist_*`) touches `right_hip_collision`
+    (`right_hip_roll_link`). Even with zero actions (default-pose PD hold), the hands settle onto the hip-roll links.
+    Illegal contact counts self-contact (sensor without a secondary filter), so a G1 holding mjlab's default pose
+    terminates. Trained policies keep their hands clear, so evaluation of a checkpoint is not affected, but it is
+    worth knowing for training (the 5 % standing-command envs). The recorded `contact_body` matched the diagnosis.
+  - time-out path: zero policy with `--episode_s 0.1` -> all 4 envs `stuck` at step 5/5, not truncated.
+  - custom noise (`--drift_cells 2 --map_delay_steps 5`) runs through `elevation_map_eval` inside the env.
+  - aggregator on synthetic summaries (2 models x 9 conditions x 2 seeds, one invalid, one random-init): pooling,
+    skipping and all 5 plots OK.
+- Board size, CPU build with 4 robots (host peak RSS): 8x8 9.0 GB / 20 s, 10x10 19.7 GB / 51 s,
+  12x12 26.3 GB / 121 s. ~160 B per geom pair (mujoco_warp `put_model`). 15x15 (~7e8 pairs) extrapolates to
+  > 100 GB: not attempted. Default grid set to 8x8; more samples = more seeds.
+- Added beyond the plan: `--zero_policy` (pipeline test), a speed validity check (success faster than 3 m/s mean is
+  invalid), `scripts/eval_memory_test.sh`.
+- Side check of the Isaac Lab tool: `actions, *_ = policy(obs)` there is correct (the AME policy returns
+  `(actions, attention_weights)`); in mjlab the policy returns a tensor and the port uses `actions = policy(obs)`.

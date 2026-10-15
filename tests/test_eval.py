@@ -219,6 +219,50 @@ def test_illegal_contact_recorded_matches_and_records_the_body() -> None:
   assert torch.equal(getattr(env, PRE_RESET_POS_ATTR), pos)
 
 
+def test_illegal_contact_recorded_names_the_contact_partner() -> None:
+  import mujoco
+
+  from ame.eval import CONTACT_PARTNER_ATTR, illegal_contact_recorded
+
+  model = mujoco.MjModel.from_xml_string(
+    """<mujoco><worldbody>
+      <body name="terrain"><geom name="ground" type="box" size="1 1 .1"/></body>
+      <body name="robot/hip"><geom name="hip" size=".1"/></body>
+      <body name="robot/wrist"><geom name="wrist" size=".1"/></body>
+      <body name="robot/knee"><geom name="knee" size=".1"/></body>
+    </worldbody></mujoco>"""
+  )
+  # geoms: 0 ground, 1 hip, 2 wrist, 3 knee.  Sensor bodies: [hip, knee].
+  force = torch.zeros(3, 2, 3)
+  force[0, 0, 2] = 5.0  # env 0: hip
+  force[1, 1, 2] = 5.0  # env 1: knee
+  force[2, 0, 2] = 5.0  # env 2: hip, but no raw contact recorded for it
+  contact = SimpleNamespace(
+    geom=torch.tensor([[2, 1], [0, 1], [0, 3], [0, 2]]),
+    worldid=torch.tensor([0, 0, 1, 2]),
+    dist=torch.tensor([-0.02, -0.001, -0.01, -0.01]),
+  )
+  env = SimpleNamespace(
+    scene={
+      "undesired_contact": SimpleNamespace(
+        data=SimpleNamespace(force=force), primary_names=["hip", "knee"]
+      ),
+      "robot": SimpleNamespace(data=SimpleNamespace(root_link_pos_w=torch.zeros(3, 3))),
+    },
+    sim=SimpleNamespace(
+      mj_model=model, data=SimpleNamespace(nacon=torch.tensor([4]), contact=contact)
+    ),
+    num_envs=3,
+    device="cpu",
+  )
+  illegal_contact_recorded(env, "undesired_contact", 1.0)
+  assert getattr(env, CONTACT_PARTNER_ATTR) == [
+    "self:wrist+terrain",  # deepest first
+    "terrain",
+    "none",
+  ]
+
+
 def test_assign_tiles_gives_one_robot_per_tile() -> None:
   from ame.eval import assign_tiles
 

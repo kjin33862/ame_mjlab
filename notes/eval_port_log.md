@@ -137,3 +137,57 @@ Left to do
 2. Not verified: GPU determinism across reruns, SAP vs NXN broadphase equivalence, families other than stones.
 3. Optional: reduce memory of large boards (the O(ngeom^2) pair table in mujoco_warp `put_model`) only by
    patching mujoco_warp; not done.
+
+## 2026-10-14 — Why the baseline fails stepping_stones at difficulty 0
+
+Baseline `checkpoints/baseline/model_9999.pt`, `--terrain stepping_stones --difficulty 0.0 --noise off --seed 0`:
+64/64 fail by `illegal_contact` at 1.70-1.92 s, max forward 1.28-1.34 m (mean 1.32), body `left/right_hip_roll_link`.
+Flat (same flags): 64/64 success.
+
+### Confirmed (measured or read from code)
+
+- **Terrain** (`ame_terrains_cfg()["stepping_stones"]` -> mjlab `BoxSteppingStonesTerrainCfg`, 8x8 m tile):
+  stone size 0.6 -> 0.3 m and nominal gap 0.05 -> 0.25 m (linear in difficulty); stone and platform tops at
+  z = 0.2 m, pit floor at z = -2.0 m (`floor_depth`), so holes are 2.2 m deep; size jitter ±0.2·d, position jitter ±0.1·d, height jitter
+  ±0.05·d (all 0 at d = 0); platform 2.0 x 2.0 m, border 0.25 m. Spawn = tile center on the platform.
+- **Platform edge is 1.00 m from the tile center; the first stone starts at 1.325 m.** Lattice spacing at d = 0
+  is 0.65 m, and the stone whose center (4.975 m) falls inside the platform is dropped, so the first gap in front
+  of (and behind) the platform is **0.325 m, not 0.05 m**. Built and listed with a scratch script. Over 20 seeds
+  this first gap is 0.30-0.33 m at d = 0-0.1, ~0-0.03 m at d = 0.25-0.5, 0.12-0.32 m at d = 0.75, and up to 1.2 m
+  at d = 1. So d = 0 is *not* the easiest stones tile at the platform edge.
+- **~1.32 m is the pelvis over the gap, at the near edge of the first stone (1.325 m), not the platform edge.**
+- **The contact partner is the robot's own hand.** New eval-only column `contact_partner` (raw MuJoCo contacts of
+  the flagged body at the termination step): 64/64 `self:<same side>_wrist_yaw_link` (39 also
+  `..._wrist_pitch_link`); `terrain` never appears. Summary `contact_pairs`: left hip <- left wrist 29, right hip
+  <- right wrist 35. Run: `logs/eval_results/20261014-193546_baseline_stepping_stones_noiseoff_C_ss0_partner`.
+  Flat: `20261014-193625_baseline_flat_noiseoff_A_flat_partner`, 64/64 success, no contacts.
+- **Self-contact counts as illegal contact.** The `undesired_contact` sensor (`ame/reward_cfg.py`) has primary =
+  non-foot links (incl. `hip_*_link`), **no secondary filter**, so any partner counts; the G1 entity uses mjlab's
+  `FULL_COLLISION` (self-collisions on). The wrists are not in the primary list, so a hand hitting the hip shows up
+  as the hip. The same sensor and termination are used in training (`illegal_contact`, threshold 1 N).
+- **Trace of one robot (scratch script, d = 0, noise off):** both ankles stay at x = 0.89-1.02 m (the platform
+  edge) from 1.4 s on, while the pelvis keeps going to 1.29 m and speeds up from 1.0 to 1.3 m/s. Hand-to-hip
+  distance falls from 0.19 to 0.125 m, mostly sideways (y 0.16 -> 0.07 m), then contact at 1.72 s. On flat the
+  hand-hip distance stays at 0.155-0.17 m.
+- **Gait:** on flat and stones, both feet lift and land together (ankle x/z equal within a few cm, at 0.02 s
+  resolution; left/right indexing checked by y = ±0.12 m): a two-footed hop, ~0.3 s period.
+- **Run-to-run:** vs the earlier `*_C_ss0` run, 57/64 envs have the same fail time but only 40/64 the same side
+  (GPU non-determinism; symmetric setup).
+
+### Guesses (not verified)
+
+- The policy cannot cross the 0.325 m gap with its two-footed hop: it stops the feet at the edge, the body pitches
+  forward over the gap, and the arms close in on the hips. The bad-orientation or a terrain hit would probably
+  follow soon after, but the hand-hip self-contact terminates it first.
+- Curriculum `terrain_levels/stepping_stones` stayed at 0 in training because the row-0 tiles have the same 0.325 m
+  first gap, so robots never got off the platform and never got promoted. Not checked against training logs.
+- The wrist-into-hip motion may be how the policy brakes or balances. Whether it would recover without the
+  self-contact termination is unknown.
+
+### Watch it
+
+    uv run python scripts/view_eval.py --checkpoint checkpoints/baseline/model_9999.pt \
+        --terrain stepping_stones --difficulty 0.0 --noise off            # viewer, episode repeats
+    uv run python scripts/view_eval.py --checkpoint checkpoints/baseline/model_9999.pt \
+        --terrain stepping_stones --difficulty 0.0 --noise off --video --video_s 3
+        # -> logs/eval_videos/stepping_stones_d0_off/rl-video-step-0.mp4 (960x720, failure at ~1.7 s)

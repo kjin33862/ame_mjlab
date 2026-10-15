@@ -29,6 +29,7 @@ import resource
 import subprocess
 import sys
 import time
+from collections import Counter
 from datetime import datetime
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -255,7 +256,13 @@ def main():
   from mjlab.tasks.registry import load_rl_cfg, load_runner_cls
   from mjlab.utils.torch import configure_torch_backends
 
-  from ame.eval import CONTACT_BODY_ATTR, PRE_RESET_POS_ATTR, assign_tiles, eval_env_cfg
+  from ame.eval import (
+    CONTACT_BODY_ATTR,
+    CONTACT_PARTNER_ATTR,
+    PRE_RESET_POS_ATTR,
+    assign_tiles,
+    eval_env_cfg,
+  )
 
   configure_torch_backends()
   device = args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -353,6 +360,7 @@ def main():
   )  # bit k = fail_terms[k] fired
   fail_time = torch.full((num_envs,), float("nan"), device=device)
   contact_body = torch.full((num_envs,), -1, dtype=torch.long, device=device)
+  contact_partner = [""] * num_envs  # "terrain" / "self:<link>", deepest first
   time_to_success = torch.full((num_envs,), float("nan"), device=device)
   max_forward = torch.zeros(num_envs, device=device)
   max_xy_disp = torch.zeros(num_envs, device=device)
@@ -477,6 +485,10 @@ def main():
       if recorded_body is not None:
         hit = failed & ((term_mask >> fail_terms.index("illegal_contact")) & 1).bool()
         contact_body[hit] = recorded_body[hit]
+        recorded_partner = getattr(base_env, CONTACT_PARTNER_ATTR, None)
+        if recorded_partner is not None:
+          for i in hit.nonzero().flatten().tolist():
+            contact_partner[i] = recorded_partner[i]
       outcome[ended & time_out] = STUCK
 
       # displacement: the terminal (pre-reset) position for envs that just ended
@@ -610,6 +622,7 @@ def main():
         "outcome": OUTCOME_NAMES[outcome_c[i]],
         "fail_reason": FAIL_REASONS[reason_c[i]],
         "contact_body": contact_body_names[body_c[i]] if body_c[i] >= 0 else "",
+        "contact_partner": contact_partner[i],
         "termination_term": "+".join(
           n for k, n in enumerate(fail_terms) if mask_c[i] >> k & 1
         ),
@@ -668,6 +681,16 @@ def main():
       name: sum(name in row["termination_term"].split("+") for row in rows)
       for name in fail_terms
     },
+    "contact_partners": dict(
+      Counter(r["contact_partner"] for r in rows if r["contact_partner"])
+    ),
+    "contact_pairs": dict(
+      Counter(
+        f"{r['contact_body']} -> {r['contact_partner']}"
+        for r in rows
+        if r["contact_partner"]
+      )
+    ),
     "mean_time_to_success_s": mean(succ_times),
     "mean_max_forward_m": mean([r["max_forward_m"] for r in rows]),
     "mean_abs_vx_err_survivors": mean(surv_errs),

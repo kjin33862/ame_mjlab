@@ -16,12 +16,14 @@ from ame.eval.env_cfg import (
 from ame.eval.observations import drift_gather_index, elevation_map_eval
 from ame.eval.terminations import (
   CONTACT_BODY_ATTR,
+  CONTACT_PARTNER_ATTR,
   PRE_RESET_POS_ATTR,
   illegal_contact_recorded,
 )
 
 __all__ = [
   "CONTACT_BODY_ATTR",
+  "CONTACT_PARTNER_ATTR",
   "EVAL_TERRAINS",
   "OFF_HEIGHT_NOISE",
   "PRE_RESET_POS_ATTR",

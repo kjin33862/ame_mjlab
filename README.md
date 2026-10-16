@@ -20,8 +20,8 @@ rough ground and stepping stones from an elevation scan.  It also includes
 ```bash
 git clone <this repo> ame_mjlab && cd ame_mjlab
 uv sync                 # creates .venv with mjlab, torch (cu128), warp, rsl-rl
-uv run pytest           # a few seconds; should report 44 passed, 1 skipped
-uv run list-envs        # should list the four tasks below
+uv run pytest           # a few seconds; should report 49 passed, 1 skipped
+uv run list-envs        # should list the five tasks below
 ```
 
 ## Train and play
@@ -52,6 +52,38 @@ Any config field can be overridden on the command line, e.g.
 | `Delta-Velocity-Rough-G1` | same env, DELTA encoder instead of AME (an encoder A/B) |
 | `Ame-Stage1-Velocity-Rough-G1` | SII-FUSC two-stage schedule, stage 1: clean perception, no pushes, gap-heavy board |
 | `Ame-Stage2-Velocity-Rough-G1` | stage 2: specialist board (stakes, beams, gaps, stairs) with a noisy map; resume from a stage-1 checkpoint |
+| `Ame-Mjlab-Gap-Velocity-Rough-G1` | gap board under mjlab's G1 rewards, deployment actor observations (see below) |
+
+### The gap-board task
+
+`Ame-Mjlab-Gap-Velocity-Rough-G1` (`ame.env_cfg.ame_gap_env_cfg`) is the
+dense AME encoder trained from scratch on a board built to teach gap
+crossing.  Its best checkpoint walks at the commanded speed and crosses
+0.20-0.30 m gaps at 0.43-0.51 m/s, but turns poorly (0.07 rad/s for a
+0.8 rad/s command).
+
+- **Terrain** (`gap_board_cfg`): 40 % lattice of 0.40 m stones, gap =
+  0.45 m × difficulty (row 0 is a seamless floor, +5 cm per row); 40 % stairs
+  up and down; 10 % waves; 10 % rough.
+- **Spawn**: a random flat patch of the tile (a stone centre on the lattice)
+  with a lattice-aligned heading; the patch becomes the env origin.
+- **Curriculum** (`GAP_CURRICULUM`): spawn on rows 0-2, never below row 0; a
+  timed-out episode promotes only if the pelvis covered 60 % of the commanded
+  speed, and a stall or an early fall demotes.
+- **Rewards and randomisation**: mjlab's G1 velocity task as shipped.
+- **Observations**: the actor drops `base_lin_vel` (96-D proprio + scan); the
+  critic keeps it.
+- **Metrics**: `Episode_Metrics/pelvis_{vel_error,yaw_error,speed}` are true
+  per-step means; judge tracking by these, not by `Metrics/twist/*`.
+
+The reference run used 2048 envs and 8 minibatches (needs more than 16 GB):
+
+```bash
+uv run train Ame-Mjlab-Gap-Velocity-Rough-G1 --env.scene.num-envs 2048 \
+  --agent.max-iterations 15000 --agent.algorithm.num-mini-batches 8 --agent.seed 42
+uv run play Ame-Mjlab-Gap-Velocity-Rough-G1 \
+  --checkpoint-file logs/rsl_rl/ame_g1/<run-dir>/model_14999.pt --num-envs 16
+```
 
 ## GPU memory
 
@@ -140,7 +172,7 @@ onto other tasks.
 
 | file | contents |
 |---|---|
-| `src/ame/__init__.py` | registers the four tasks with mjlab |
+| `src/ame/__init__.py` | registers the five tasks with mjlab |
 | `src/ame/env_cfg.py` | `ame_rough_env_cfg` / `ame_stage_env_cfg` and the `apply_*` mutators; `NUM_ENVS` |
 | `src/ame/rl_cfg.py` | PPO runner configs and model configs; `NUM_MINI_BATCHES` |
 | `src/ame/scan.py` | scan geometry and the `height_map` observation group |
@@ -148,7 +180,7 @@ onto other tasks.
 | `src/ame/models.py` | `TerrainAttention`, `AmeModel` (actor/critic), `TerrainContext` (the encoder as a branch for another actor) |
 | `src/ame/delta.py` | `DeltaModel` |
 | `src/ame/symmetry.py` | the left/right mirror of observations and actions |
-| `src/ame/mdp/` | observation (`elevation_map`), reward and termination terms |
+| `src/ame/mdp/` | observation (`elevation_map`), reward, termination, patch-spawn event, floor curriculum and tracking-metric terms |
 | `tests/` | unit tests; no simulator rollouts, so they run in seconds |
 
 ## Differences from the reference

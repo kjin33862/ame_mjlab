@@ -263,6 +263,53 @@ def test_illegal_contact_recorded_names_the_contact_partner() -> None:
   ]
 
 
+def test_spawn_asym_adds_one_joint_offset_after_the_joint_reset() -> None:
+  from mjlab.envs import mdp as envs_mdp
+
+  from ame.eval import SPAWN_ASYM_JOINT, eval_env_cfg
+
+  assert "spawn_asym" not in eval_env_cfg(num_rows=1, num_cols=1).events
+  events = eval_env_cfg(num_rows=1, num_cols=1, spawn_asym=0.1).events
+  names = list(events)
+  assert names.index("spawn_asym") > names.index("reset_robot_joints")
+  term = events["spawn_asym"]
+  assert term.mode == "reset" and term.func is envs_mdp.reset_joints_by_offset
+  assert term.params["position_range"] == (0.1, 0.1)
+  assert term.params["asset_cfg"].joint_names == (SPAWN_ASYM_JOINT,)
+
+
+def test_deploy_actor_obs_drops_the_velocity_and_is_read_from_the_checkpoint(
+  tmp_path: Path,
+) -> None:
+  from ame.eval import checkpoint_actor_obs, eval_env_cfg
+
+  full = eval_env_cfg(num_rows=1, num_cols=1)
+  deploy = eval_env_cfg(num_rows=1, num_cols=1, actor_obs="deploy")
+  assert "base_lin_vel" in full.observations["actor"].terms
+  assert "base_lin_vel" not in deploy.observations["actor"].terms
+  assert "base_lin_vel" in deploy.observations["critic"].terms
+  with pytest.raises(ValueError):
+    eval_env_cfg(num_rows=1, num_cols=1, actor_obs="none")
+  for width, expected in ((99, "full"), (96, "deploy")):
+    path = tmp_path / f"model_{width}.pt"
+    weight = torch.zeros(64, width)
+    torch.save({"actor_state_dict": {"proprio_embedding.weight": weight}}, path)
+    assert checkpoint_actor_obs(str(path)) == expected
+
+
+def test_cli_gait_and_symmetry_flags() -> None:
+  ev = _load_evaluate_script()
+  parse = lambda *a: ev.build_parser().parse_args(["--random_policy", *a])  # noqa: E731
+  args = parse()
+  assert args.spawn_asym == 0.0 and not args.stochastic_actions
+  assert parse("--spawn_asym").spawn_asym == 0.1
+  assert parse("--spawn_asym", "0.2").spawn_asym == 0.2
+  assert parse("--stochastic_actions").stochastic_actions
+  assert (
+    args.actor_obs == "auto" and parse("--actor_obs", "deploy").actor_obs == "deploy"
+  )
+
+
 def test_assign_tiles_gives_one_robot_per_tile() -> None:
   from ame.eval import assign_tiles
 

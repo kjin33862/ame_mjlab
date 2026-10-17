@@ -42,7 +42,13 @@ uv run python scripts/aggregate_sweep.py
 Results go to `logs/eval_results/<YYYYmmdd-HHMMSS>_<model_name>_<terrain>_<noise tag>[_<tag>]/` (ignored by git).
 The noise tag is `noiseoff` or `h<sigma>-o<offset>-dc<drift cells>-d<delay>-p<proprio 0|1>`. `--task` selects the
 policy config (default `Ame-Velocity-Rough-G1`; `Delta-Velocity-Rough-G1` for DELTA checkpoints). The checkpoint is
-loaded the same way as `uv run play`.
+loaded the same way as `uv run play`. `--actor_obs` (default `auto`) picks the actor observation set from the
+checkpoint: `full` (with `base_lin_vel`, 99-D proprio, the AME tasks) or `deploy` (without it, 96-D, e.g. the
+gap-board run `checkpoints/shuang_gap2048`). Only the actor's inputs change; the eval env, rewards and terminations
+stay those of `Ame-Velocity-Rough-G1` (including illegal contact, which the gap-board task does not train with).
+
+Success is a base displacement of `--success_dist` from spawn in *any* direction; `max_forward_m` in `per_env.csv`
+is the progress along the commanded +x. Compare the two when a policy may turn away from the command.
 
 Neither test policy walks: both end by illegal contact within about 0.25 s, because at mjlab's default G1 pose
 the hands come to rest against the hip-roll links and illegal contact counts self-contact. The short episode above

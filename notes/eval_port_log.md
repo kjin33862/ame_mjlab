@@ -191,3 +191,129 @@ Flat (same flags): 64/64 success.
     uv run python scripts/view_eval.py --checkpoint checkpoints/baseline/model_9999.pt \
         --terrain stepping_stones --difficulty 0.0 --noise off --video --video_s 3
         # -> logs/eval_videos/stepping_stones_d0_off/rl-video-step-0.mp4 (960x720, failure at ~1.7 s)
+
+## 2026-10-17 — Shuang's gap-board run vs the baseline
+
+Inputs: `checkpoints/shuang_gap2048/` (`model_14999.pt`, `params/`, `git/value_td.diff`, his tfevents) and
+`checkpoints/baseline/` (`model_9999.pt`, `params/`, `train_baseline.log`). `upstream/main` = `ae545cc` + `49a85ca`.
+
+### Confirmed (measured or read from files)
+
+**His uncommitted diff (`git/value_td.diff`).** Taken in his own workspace (branch `loco-stack`, commit `d7b1f1b`,
+paths `ame/src/ame/...`; that commit is not in our repo). It changes `symmetry.py` only, plus one test: new
+`PROPRIO_CORE = 96` and `has_lin_vel(width)`, and `mirror_obs_actions` now decides per observation group whether it
+leads with `base_lin_vel` (odd width beyond 96 = yes) instead of assuming it always does. It touches only the
+left/right data augmentation in PPO updates: no reward, observation or env change. For a 96-D actor (his) it is
+required (without it the mirrored actor batch is shifted by 3 and wrong); for a 99-D actor (baseline) it is a no-op.
+**It is already in our code** (`src/ame/symmetry.py:125-140` and `tests/test_rewards.py`, since `ae545cc`).
+
+**Config differences** (`params/agent.yaml`, `params/env.yaml`; baseline -> Shuang):
+
+| | baseline | Shuang |
+|---|---|---|
+| envs / iterations / minibatches | 1024 / 10000 / 16 | 2048 / 15000 / 8 |
+| logger / run name | tensorboard / `baseline` | wandb (`ame_loco`) / `ame_mjlab_gap-2048` |
+| rewards | AME-2 rebalanced (`ame.mdp`): `feet_air_time` +0.5 (threshold 0.6), `track_lin_vel_xy_exp` +3, `track_ang_vel_z_exp` +6, `termination_penalty` -50, `flat_orientation_l2` -2, `feet_stumble` -1, `undesired_contacts` -1, `feet_too_near` -1, `joint_deviation_*`, `rbf_*`, `action_rate_l2` -0.025, ... | mjlab G1 velocity stack: `track_linear_velocity` +2, `track_angular_velocity` +2, `upright` +1, `pose` +1 (walking/running stds), `air_time` **0.0**, `foot_clearance` -2 (target 0.1 m), `foot_swing_height` -0.25, `foot_slip` -0.1, `soft_landing` -1e-5, `self_collisions` -1, `body_ang_vel` -0.05, `angular_momentum` -0.02, `action_rate_l2` -0.1 |
+| terminations | `illegal_contact` (self-contact counts), `bad_orientation`, `physics_blowup`, time-out | `fell_over` (tilt > 70 deg), `out_of_terrain_bounds`, time-out; **no illegal contact** |
+| actor proprio | 99-D (with `base_lin_vel`, noise ±0.5) | 96-D (no `base_lin_vel`); critic identical (111-D) |
+| terrain | 12 families: flat 5, pyramid stairs 12+12, random stairs 8, open stairs 5, random grid 10, discrete obstacles 12, rough 10, slopes 6+6, wave 4, stepping stones (`BoxSteppingStonesTerrainCfg`) 10 % | stone lattice (`BoxStoneLatticeTerrainCfg`, 0.40 m stones, gap 0.45·d) 40, pyramid stairs 20 + 20 (same params as baseline), wave 10, rough 10 % |
+| spawn (`reset_base`) | tile centre, x/y ±0.5 m, yaw ±pi | random `spawn` flat patch (a stone centre on stones), x/y ±0.03 m, yaw {0, 90, 180, 270 deg} ±0.15 |
+| curriculum | `terrain_levels_vel`, start rows 0-1 | `terrain_levels_floor` (rule `tracking`, track_ratio 0.6, floor 0), start rows 0-2 |
+| metrics | - | `pelvis_vel_error`, `pelvis_yaw_error`, `pelvis_speed`, `command_speed` |
+
+Same: seed 42, PPO hyperparameters (lr 1e-3, entropy 0.008, desired KL 0.02, gamma 0.99, lam 0.95, 5 epochs,
+24 steps/env), AME model (33x21x3 map, 16 heads, mha 64), symmetry augmentation on / mirror loss off, commands,
+other actor noise, events other than `reset_base`, board size 10 x 20 tiles of 8 m.
+
+**Training curves** (his tfevents read with `tensorboard` 2.20, already installed; mine from `train_baseline.log`).
+His log has no `feet_air_time` and no `illegal_contact` (his task has neither); shown: `air_time` (weight 0) and
+`fell_over`. Termination values are as logged (look like counts per iteration, not fractions).
+
+| iter | my feet_air_time | his air_time | my stones lvl | his stones lvl | my mean lvl | his mean lvl | my illegal_contact | his fell_over |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 0 | 0 | 0.79 | 0.99 | 0.85 | 0.98 | 76.0 | 0 |
+| 1000 | 0.0006 | 0 | 0 | 0.88 | 0.00 | 0.93 | 6.25 | 2.83 |
+| 2000 | 0.0010 | 0 | 0 | 1.26 | 0.56 | 4.08 | 2.95 | 1.39 |
+| 3000 | 0.0011 | 0 | 0.01 | 1.82 | 1.54 | 4.26 | 2.22 | 1.05 |
+| 4000 | 0.0011 | 0 | 0 | 2.32 | 2.13 | 4.57 | 1.95 | 1.17 |
+| 5000 | 0.0013 | 0 | 0 | 2.80 | 2.00 | 4.71 | 1.75 | 1.13 |
+| 6000 | 0.0016 | 0 | 0 | 2.70 | 2.21 | 4.59 | 1.50 | 0.92 |
+| 7000 | 0.0018 | 0 | 0 | 2.93 | 2.78 | 4.83 | 1.59 | 1.55 |
+| 8000 | 0.0016 | 0 | 0 | 2.98 | 2.37 | 4.80 | 2.00 | 1.21 |
+| 9000 | 0.0019 | 0 | 0.01 | 3.14 | 2.70 | 4.82 | 1.90 | 1.58 |
+| 9999 / 10000 | 0.0015 | 0 | 0 | 3.24 | 2.84 | 4.92 | 2.13 | 1.46 |
+| 12000 | - | 0 | - | 3.61 | - | 4.97 | - | 1.13 |
+| 14999 | - | 0 | - | 3.76 | - | 5.12 | - | 1.14 |
+
+- `feet_air_time` never rises sharply in either run: mine creeps from 0.0006 to 0.002 (every 250 iterations checked),
+  his is 0 throughout (weight 0). His foot-lift terms (`foot_clearance` -0.07 -> -0.10, `foot_swing_height` -0.02 ->
+  -0.03, `Metrics/peak_height_mean` 0.019 -> 0.033 m) settle by iteration ~2000.
+- My stepping-stones level stays 0 for all 10k iterations; his rises steadily to 3.76 (on his board row r = gap
+  0.05·r m, so ~0.19 m). His pyramid-stairs level reaches ~6 by iteration 2000.
+
+**Commit `49a85ca`** adds task `Ame-Mjlab-Gap-Velocity-Rough-G1` = `ame_rough_env_cfg(rewards="mjlab")` +
+`gap_board_cfg()` + `apply_deploy_observations` + `apply_patch_spawn` + `add_tracking_metrics` + (training only)
+`apply_terrain_floor(**GAP_CURRICULUM)`; new terms in `ame/mdp/{curriculums,events,metrics}.py`, tests
+`tests/test_gap.py`; same PPO runner config as `Ame-Velocity-Rough-G1`. Terrain: 40 % lattice of 0.40 m flush stones
+(top z = 0, pit 2 m), gap = 0.45·d with d = row/9 (row 0 seamless, +5 cm per row); 40 % pyramid stairs up/down
+(5-20 cm, 0.30 m treads); 10 % wave; 10 % rough. **No centre platform, so the 0.325 m entry gap does not exist on
+his board**: the gap is the same everywhere on a tile. It still exists in our eval: `--terrain stepping_stones`
+builds the old `BoxSteppingStonesTerrainCfg` tile (platform + 0.325 m first gap at d = 0).
+
+**Merge (not done; your decision).** `git merge-tree --write-tree eval upstream/main` reports no conflicts, and no file
+it touches overlaps the eval work. Proposed: on `eval`, `git merge --no-ff upstream/main`, then `uv run pytest`
+(expect 70 passed, 1 skipped: 65 now + 5 in `tests/test_gap.py`) and `uv run list-envs` (five tasks).
+
+**Load check.** With the code as it was, `model_14999.pt` did not load: `proprio_embedding.weight` [64, 96] vs [64, 99]
+and `mlp.0.weight` [512, 160] vs [512, 163] — the eval env's actor had `base_lin_vel`. His diff is irrelevant to
+this (already present, training only). Fix (eval only): `eval_env_cfg(actor_obs="deploy")` calls
+`apply_deploy_observations`; `--actor_obs auto|full|deploy` in `evaluate.py` / `view_eval.py`, `auto` reads the
+actor input width from the checkpoint (`checkpoint_actor_obs`). It now loads strictly.
+
+**Evaluation** (8x8 board, 64 robots, one per tile, vx = 1 m/s, noise off, seeds 0 1 2 pooled = 192 robots per row;
+same env, rewards and terminations for both, i.e. `Ame-Velocity-Rough-G1` play env incl. illegal contact; his actor
+without `base_lin_vel`; all 24 runs valid; folders `logs/eval_results/20261017-03*_cmp`):
+
+| terrain | d | model | success | fail (main reason) | straight successes (forward >= 3.5 m) | mean max forward m | time to success s | double / single / flight |
+|---|---|---|---|---|---|---|---|---|
+| flat | 0.0 | baseline | 1.00 | 0 | 192 | 3.95 | 4.7 | 0.62 / 0.05 / 0.33 |
+| flat | 0.0 | Shuang | 0.99 ± 0.01 | 1 (self-contact hip yaw) | 191 | 3.92 | 4.3 | 0.26 / 0.72 / 0.02 |
+| pyramid_stairs | 0.3 | baseline | 1.00 | 0 | 192 | 3.96 | 4.8 | 0.58 / 0.11 / 0.31 |
+| pyramid_stairs | 0.3 | Shuang | 1.00 | 0 | 192 | 3.94 | 4.5 | 0.23 / 0.73 / 0.04 |
+| stepping_stones | 0.0 | baseline | 0.00 | 192 (self-contact wrist -> hip) | 0 | 1.32 | - | 0.69 / 0.07 / 0.24 |
+| stepping_stones | 0.0 | Shuang | 0.98 ± 0.01 | 4 (3 contact: terrain 1, self torso 1; 1 orientation) | **4** | 1.79 | 5.0 | 0.25 / 0.72 / 0.03 |
+| stepping_stones | 0.5 | baseline | 0.00 | 192 (self-contact wrist -> hip) | 0 | 1.54 | - | 0.63 / 0.08 / 0.29 |
+| stepping_stones | 0.5 | Shuang | 0.98 ± 0.01 | 4 (contact with terrain) | 118 | 3.50 | 4.6 | 0.22 / 0.75 / 0.03 |
+
+- Gait: the baseline hops (both feet down 58-69 % of the time, both feet in the air 24-33 %, one foot ~5-11 %);
+  Shuang's policy walks (one foot down ~72-75 %, both 22-26 %, flight 2-4 %).
+- Success = 4 m from spawn in **any** direction (`scripts/evaluate.py:601`). On stones d = 0 Shuang's robots mostly
+  leave sideways: median forward / total displacement at success 0.44 (0.98 on flat and stairs, 0.89 on stones
+  d = 0.5). Video `logs/eval_videos/shuang_gap2048/stepping_stones_d0_off/rl-video-step-0.mp4`: the robot turns
+  about 90 deg in the first ~1.5 s, then walks off the platform and across the stones in the new direction.
+  It does leave the platform, so it crosses a 0.325 m gap, but not along the command.
+- Flat video of his policy: `logs/eval_videos/shuang_gap2048/flat_d0_off/rl-video-step-0.mp4` (6 s).
+
+**Training command for the gap task** (not run; works only after merging `upstream/main`, the task is not registered
+on `eval` yet):
+
+    nohup uv run train Ame-Mjlab-Gap-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 2000 \
+      --agent.run-name gap_short --agent.logger tensorboard > train_gap_short.log 2>&1 &
+
+(1024 envs and 16 minibatches are the defaults, seed 42; his run used 2048 envs and 8 minibatches, which need more
+than 16 GB of GPU memory per the upstream README.)
+
+### Guesses (not verified)
+
+- The main reason my baseline hops and never learns stones is the reward/terrain recipe, not the symmetry diff:
+  `feet_air_time` (threshold 0.6 s) stays tiny all run, so nothing pays for alternating steps, and the old stones tile
+  has the 0.325 m entry gap even at row 0, so the curriculum never promotes on stones. His board starts at a gap of 0
+  and grows 5 cm per row, and his reward set (pose, foot clearance, swing height) shapes a walking gait without
+  any air-time reward.
+- The 90 deg turn on stones d = 0 is plausibly learned from his spawn (headings in 90 deg steps on a square lattice)
+  and his weak yaw tracking (upstream README: 0.07 rad/s for 0.8 rad/s). Why it turns on d = 0 but mostly not on
+  d = 0.5 is unknown (d = 0.5 has a ~0-0.03 m entry gap, d = 0 has 0.325 m).
+- His few failures would partly not count in his own task (no illegal-contact termination); the eval is stricter for
+  him than his training was.
+- Not tested: his own lattice board in the eval (would need the gap task, i.e. the merge), noise on, and turning
+  commands.

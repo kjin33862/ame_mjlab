@@ -11,7 +11,12 @@ Differences from ``ame_rough_env_cfg(play=True)``:
 * 20 s episodes;
 * map / proprio noise from a preset or explicit values (:func:`apply_eval_noise`);
 * the illegal-contact termination also records which body touched (same
-  termination result).
+  termination result);
+* optionally (``spawn_asym``) a left-right symmetry break at spawn: the left
+  hip pitch joint starts ``spawn_asym`` rad off the default pose;
+* ``actor_obs="deploy"`` drops ``base_lin_vel`` from the actor group (the
+  deployment set, as in the gap-board task), for checkpoints whose actor was
+  trained without it (:func:`checkpoint_actor_obs` tells which).
 """
 
 from __future__ import annotations
@@ -22,13 +27,17 @@ from typing import Any
 
 import torch
 from mjlab.envs import ManagerBasedRlEnvCfg
+from mjlab.envs import mdp as envs_mdp
+from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.observation_manager import ObservationTermCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 
-from ame.env_cfg import ame_rough_env_cfg
+from ame.env_cfg import ame_rough_env_cfg, apply_deploy_observations
 from ame.eval.observations import elevation_map_eval
 from ame.eval.terminations import illegal_contact_recorded
 from ame.mdp import observations as ame_obs
 from ame.scan import MAP_GROUP
+from ame.symmetry import has_lin_vel
 from ame.terrains import ame_terrains_cfg
 
 EVAL_TERRAINS = tuple(ame_terrains_cfg().sub_terrains)
@@ -41,12 +50,24 @@ TRAIN_HEIGHT_NOISE = {
   "delay_steps": 1,
 }
 """The training map noise (``elevation_map(noise=True)``)."""
+SPAWN_ASYM_JOINT = "left_hip_pitch_joint"
+"""The joint ``spawn_asym`` offsets at every reset."""
 OFF_HEIGHT_NOISE = {
   "height_sigma": 0.0,
   "height_offset": 0.0,
   "drift_cells": 0,
   "delay_steps": 1,
 }
+ACTOR_OBS = ("full", "deploy")
+"""Actor observation sets: ``full`` (with ``base_lin_vel``, the AME tasks) or
+``deploy`` (without it)."""
+
+
+def checkpoint_actor_obs(path: str) -> str:
+  """``full`` or ``deploy``, from the width of the actor's proprio input."""
+  state = torch.load(path, map_location="cpu", weights_only=False)["actor_state_dict"]
+  width = state["proprio_embedding.weight"].shape[1]
+  return "full" if has_lin_vel(width) else "deploy"
 
 
 def eval_env_cfg(
@@ -60,12 +81,18 @@ def eval_env_cfg(
   proprio_noise: bool = True,
   command: tuple[float, float, float] = (1.0, 0.0, 0.0),
   com_dr: bool = False,
+  spawn_asym: float = 0.0,
+  actor_obs: str = "full",
 ) -> ManagerBasedRlEnvCfg:
   """Build the evaluation config.  ``height_noise`` defaults to the training
   map noise; ``proprio_noise`` turns on the actor's training noise."""
   if terrain not in EVAL_TERRAINS:
     raise ValueError(f"terrain must be one of {EVAL_TERRAINS}, got {terrain!r}")
+  if actor_obs not in ACTOR_OBS:
+    raise ValueError(f"actor_obs must be one of {ACTOR_OBS}, got {actor_obs!r}")
   cfg = ame_rough_env_cfg(play=True)
+  if actor_obs == "deploy":
+    apply_deploy_observations(cfg)
   cfg.seed = seed
   cfg.scene.num_envs = num_rows * num_cols
   cfg.episode_length_s = episode_s
@@ -94,6 +121,18 @@ def eval_env_cfg(
   pose = dict(cfg.events["reset_base"].params["pose_range"])
   pose.update({"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)})
   cfg.events["reset_base"].params["pose_range"] = pose
+  if spawn_asym:
+    # Appended after reset_robot_joints, so it runs last and overrides only
+    # this one joint (velocity stays at the default 0).
+    cfg.events["spawn_asym"] = EventTermCfg(
+      func=envs_mdp.reset_joints_by_offset,
+      mode="reset",
+      params={
+        "position_range": (spawn_asym, spawn_asym),
+        "velocity_range": (0.0, 0.0),
+        "asset_cfg": SceneEntityCfg("robot", joint_names=(SPAWN_ASYM_JOINT,)),
+      },
+    )
 
   # Fixed twist command.
   twist: Any = cfg.commands["twist"]
@@ -157,10 +196,13 @@ def assign_tiles(env: Any) -> None:
 
 
 __all__ = [
+  "ACTOR_OBS",
   "EVAL_TERRAINS",
   "OFF_HEIGHT_NOISE",
+  "SPAWN_ASYM_JOINT",
   "TRAIN_HEIGHT_NOISE",
   "apply_eval_noise",
   "assign_tiles",
+  "checkpoint_actor_obs",
   "eval_env_cfg",
 ]

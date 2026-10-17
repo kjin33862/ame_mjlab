@@ -10,6 +10,9 @@ afterwards are ignored):
              supporting surface < --fall_height; optionally base z < spawn z - --spawn_drop), held for --fall_hold_s
     stuck:   neither by the end of the episode
 
+Gait, per env over its tracked steps (feet_ground_contact sensor, sampled once per policy step at 50 Hz): the
+fraction of steps with both feet on the terrain (double support), exactly one (single support), or none (flight).
+
 Validity guard: the run is aborted, summary.json is written with "valid": false and the exit code is 2 if the
 spawn check fails at step 1 (a robot not at its tile center, or not standing on the terrain), if more than 50% of
 envs fail by "height" within the first second, or if any env succeeds faster than 3 m/s on average.
@@ -115,6 +118,28 @@ def build_parser() -> argparse.ArgumentParser:
     "--seed", type=int, default=0, help="Seed for the terrain generator and the env."
   )
   p.add_argument("--episode_s", type=float, default=20.0)
+  p.add_argument(
+    "--stochastic_actions",
+    action="store_true",
+    help="Sample actions from the policy's Gaussian (as in training rollouts) instead of using its mean. "
+    "Sampling is seeded with --seed.",
+  )
+  p.add_argument(
+    "--spawn_asym",
+    type=float,
+    nargs="?",
+    const=0.1,
+    default=0.0,
+    help="Break the left-right symmetry at spawn: start left_hip_pitch_joint this many rad off the default "
+    "pose at every reset (flag alone: +0.1 rad). Default 0 = symmetric spawn.",
+  )
+  p.add_argument(
+    "--actor_obs",
+    default="auto",
+    choices=["auto", "full", "deploy"],
+    help="Actor observation set. full: with base_lin_vel (the AME tasks); deploy: without it (the gap-board "
+    "task). auto: from the checkpoint's actor input width (full without a checkpoint).",
+  )
   p.add_argument(
     "--com_dr",
     action="store_true",
@@ -261,8 +286,10 @@ def main():
     CONTACT_PARTNER_ATTR,
     PRE_RESET_POS_ATTR,
     assign_tiles,
+    checkpoint_actor_obs,
     eval_env_cfg,
   )
+  from ame.reward_cfg import FEET_CONTACT_SENSOR
 
   configure_torch_backends()
   device = args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -280,6 +307,9 @@ def main():
     run_dir = os.path.basename(os.path.dirname(checkpoint)) if checkpoint else ""
     stem = os.path.splitext(os.path.basename(checkpoint))[0] if checkpoint else ""
     args.model_name = f"{run_dir}_{stem}" if checkpoint else policy_kind
+  if args.actor_obs == "auto":
+    args.actor_obs = checkpoint_actor_obs(checkpoint) if checkpoint else "full"
+  print(f"[INFO] actor observations: {args.actor_obs}")
 
   cuda_used_mb = (
     (lambda: (lambda f, t: (t - f) / 2**20)(*torch.cuda.mem_get_info(device)))
@@ -300,6 +330,8 @@ def main():
     height_noise=height_noise,
     proprio_noise=proprio,
     com_dr=args.com_dr,
+    spawn_asym=args.spawn_asym,
+    actor_obs=args.actor_obs,
   )
   env_cfg.scene.num_envs = args.num_envs
   rl_cfg = load_rl_cfg(args.task)
@@ -323,6 +355,10 @@ def main():
   else:
     print(f"[WARN] {policy_kind} policy: results are meaningless (pipeline test only).")
   policy = runner.get_inference_policy(device=device)
+  if args.stochastic_actions and checkpoint is not None:
+    torch.manual_seed(args.seed)
+    mean_policy = policy
+    policy = lambda obs: mean_policy(obs, stochastic_output=True)  # noqa: E731
   if args.zero_policy:
     num_actions = env.num_actions
     policy = lambda obs: torch.zeros(env.num_envs, num_actions, device=device)  # noqa: E731
@@ -332,6 +368,7 @@ def main():
 
   robot = base_env.scene["robot"]
   scan = base_env.scene["terrain_scan"]
+  feet = base_env.scene[FEET_CONTACT_SENSOR]
   terrain = base_env.scene.terrain
   contact_sensor_name = env_cfg.terminations["illegal_contact"].params["sensor_name"]
   contact_body_names = [
@@ -368,6 +405,8 @@ def main():
   height_sum = torch.zeros(num_envs, device=device)
   n_height = torch.zeros(num_envs, dtype=torch.long, device=device)
   n_tracked = torch.zeros(num_envs, dtype=torch.long, device=device)
+  # steps with 0 / 1 / 2 feet on the terrain: flight / single / double support
+  n_feet_down = torch.zeros(num_envs, 3, dtype=torch.long, device=device)
   tilt_cnt = torch.zeros(num_envs, dtype=torch.long, device=device)
   low_cnt = torch.zeros(num_envs, dtype=torch.long, device=device)
   drop_cnt = torch.zeros(num_envs, dtype=torch.long, device=device)
@@ -383,6 +422,10 @@ def main():
   # -- output folder (created now so that an aborted run still leaves an INVALID summary)
   tag = noise_tag(height_noise, proprio)
   run_name = f"{datetime.now():%Y%m%d-%H%M%S}_{args.model_name}_{args.terrain}_{tag}"
+  if args.spawn_asym:
+    run_name += f"_asym{args.spawn_asym:g}"
+  if args.stochastic_actions:
+    run_name += "_stoch"
   if args.tag:
     run_name += f"_{args.tag}"
   out_dir = os.path.join(os.path.expanduser(args.out_root), run_name)
@@ -402,6 +445,8 @@ def main():
     "tiles_total": tiles_total,
     "height_noise": height_noise,
     "proprio_noise": proprio,
+    "stochastic_actions": args.stochastic_actions,
+    "spawn_asym": args.spawn_asym,
     "tag": args.tag,
   }
 
@@ -526,6 +571,10 @@ def main():
       height_sum += torch.where(finite_h, height, 0.0)
       n_height += finite_h.long()
       n_tracked += active.long()
+      feet_down = (feet.data.found > 0).sum(dim=1).clamp(max=2)
+      n_feet_down += (
+        active[:, None] & (feet_down[:, None] == torch.arange(3, device=device))
+      ).long()
 
       if step == 1:
         step1_disp = float(torch.where(active, xy_dist, 0.0).max())
@@ -605,6 +654,7 @@ def main():
   mean_height = torch.where(
     n_height > 0, height_sum / n_height.clamp(min=1), torch.nan
   ).cpu()
+  gait_frac = (n_feet_down / n_tracked.clamp(min=1)[:, None]).cpu().tolist()
   outcome_c, reason_c = outcome.cpu().tolist(), fail_reason.cpu().tolist()
   tracked_c, body_c, mask_c = (
     n_tracked.cpu().tolist(),
@@ -632,6 +682,9 @@ def main():
         "max_xy_disp_m": float(max_xy_disp[i]),
         "mean_abs_vx_err": float(mean_err[i]) if survivor else float("nan"),
         "tracked_steps": tracked_c[i],
+        "double_support_frac": gait_frac[i][2] if tracked_c[i] else float("nan"),
+        "single_support_frac": gait_frac[i][1] if tracked_c[i] else float("nan"),
+        "flight_frac": gait_frac[i][0] if tracked_c[i] else float("nan"),
         "mean_height_above_support_m": float(mean_height[i]),
         "static_friction": float(friction[i]),
       }
@@ -691,6 +744,10 @@ def main():
         if r["contact_partner"]
       )
     ),
+    "gait_mean": {
+      key: mean([r[f"{key}_frac"] for r in rows if r["tracked_steps"] > 0])
+      for key in ("double_support", "single_support", "flight")
+    },
     "mean_time_to_success_s": mean(succ_times),
     "mean_max_forward_m": mean([r["max_forward_m"] for r in rows]),
     "mean_abs_vx_err_survivors": mean(surv_errs),

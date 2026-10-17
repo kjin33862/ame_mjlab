@@ -30,6 +30,14 @@ def main():
   p.add_argument("--seed", type=int, default=0)
   p.add_argument("--noise", default="off", choices=["train", "off"])
   p.add_argument("--episode_s", type=float, default=20.0)
+  p.add_argument(
+    "--spawn_asym",
+    type=float,
+    nargs="?",
+    const=0.1,
+    default=0.0,
+    help="As in evaluate.py: left_hip_pitch_joint offset at spawn [rad] (flag alone: 0.1).",
+  )
   p.add_argument("--viewer", default="auto", choices=["auto", "native", "viser"])
   p.add_argument(
     "--video", action="store_true", help="Save an mp4 instead of opening a viewer."
@@ -44,6 +52,13 @@ def main():
   # the evaluate.py noise overrides, so that resolve_noise() sees the same fields
   for name in ("height_sigma", "height_offset"):
     p.add_argument(f"--{name}", type=float, default=None)
+  p.add_argument(
+    "--actor_obs",
+    default="auto",
+    choices=["auto", "full", "deploy"],
+    help="Actor observation set. full: with base_lin_vel (the AME tasks); deploy: without it (the gap-board "
+    "task). auto: from the checkpoint's actor input width.",
+  )
   for name in ("drift_cells", "map_delay_steps"):
     p.add_argument(f"--{name}", type=int, default=None)
   p.add_argument("--proprio_noise", default="preset", choices=["preset", "on", "off"])
@@ -59,12 +74,14 @@ def main():
   from mjlab.utils.wrappers import VideoRecorder
   from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
 
-  from ame.eval import assign_tiles, eval_env_cfg
+  from ame.eval import assign_tiles, checkpoint_actor_obs, eval_env_cfg
 
   configure_torch_backends()
   device = args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
   checkpoint = os.path.abspath(os.path.expanduser(args.checkpoint))
   height_noise, proprio = resolve_noise(args)
+  if args.actor_obs == "auto":
+    args.actor_obs = checkpoint_actor_obs(checkpoint)
   env_cfg = eval_env_cfg(
     terrain=args.terrain,
     num_rows=1,
@@ -74,6 +91,8 @@ def main():
     episode_s=args.episode_s,
     height_noise=height_noise,
     proprio_noise=proprio,
+    spawn_asym=args.spawn_asym,
+    actor_obs=args.actor_obs,
   )
   env_cfg.scene.num_envs = 1
   env_cfg.viewer.width = args.video_width
@@ -87,6 +106,8 @@ def main():
   env = base_env
   if args.video:
     tag = f"{args.terrain}_d{args.difficulty:g}_{args.noise}"
+    if args.spawn_asym:
+      tag += f"_asym{args.spawn_asym:g}"
     env = VideoRecorder(
       base_env,
       video_folder=os.path.join(args.out_dir, tag),

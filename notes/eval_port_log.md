@@ -494,4 +494,4 @@ observation set is read from the checkpoint. Expected ~2.5-3 h for a walking pol
 Progress: `tail logs/eval_results/matrix_gap_1024.log`.
 
 Extra videos (Shuang, 8 s): `logs/eval_videos/shuang_gap2048/{pyramid_stairs_inv_d0.5_off,wave_d0_off}/`.
-Korean summary for the user: `notes/overnight_summary_ko.md`. Finished 05:05; nothing left running.
+Korean summary for the user: `notes/overnight_summary_ko.md`. Finished 04:55; nothing left running.

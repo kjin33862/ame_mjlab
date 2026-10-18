@@ -376,3 +376,12 @@ Run unattended (user asleep); choices made without asking are marked **Choice**.
    `logs/eval_videos/baseline/stone_lattice_d0.5_off/rl-video-step-0.mp4` (stays on its start stone, hopping in place)
    and `logs/eval_videos/shuang_gap2048/stone_lattice_d0.5_off/rl-video-step-0.mp4` (walks forward over the stones
    and reaches the tile border at ~3.8 s). Looked at 3 frames each (0.5, 2, 3.8 s).
+
+**Incident 02:14 — host RAM.** `stone_lattice` at d = 0 has 18 x 18 stones per tile -> 21,060 terrain geoms on the
+8x8 board: ~24 GB host RSS, ~95 s env build, ~10 min per run (d = 0.25: 12,868 geoms, 12 GB; d = 0.5: 5.9 GB;
+d >= 0.75: ~3 GB). With both models in parallel, two such runs overlapped: `shuang_gap2048 mx-stone_lattice-d0.0-s0`
+failed (`warp RuntimeError: Failed to allocate 1785485024 bytes on device 'cuda:0'`, exit 1), RAM hit 0 GB free with
+6 GB swap, and Claude Code's own background waiter was killed for low memory. **Choice:** at 02:15 the baseline loop
+was stopped by hand (lost one pyramid_stairs run in progress) and chained to restart after the Shuang loop exits
+(`tail --pid`, restart-safe, so its 63 finished runs are skipped). From then on one model at a time. The failed
+Shuang run is retried in the script's second pass. For `gap_1024`: run alone, never two matrices at once.

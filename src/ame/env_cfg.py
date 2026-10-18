@@ -11,7 +11,10 @@ and domain randomisation, so the recipe layers only its own pieces:
   ``(vx, vy, wz)`` with ``vy`` open, so a higher-level planner can steer the
   policy anywhere in the twist box;
 * ``apply_rewards`` — mjlab's stack, the AME-2 stack, or the rebalanced AME-2
-  stack the registered tasks train on (:mod:`ame.reward_cfg`).
+  stack the registered tasks train on (:mod:`ame.reward_cfg`);
+* ``apply_patch_spawn`` / ``apply_terrain_floor`` / ``add_tracking_metrics`` —
+  on-stone spawns, a progress-gated terrain curriculum and honest per-step
+  tracking metrics, for the gap-board task.
 
 Each mutator is independent, so they compose onto other tasks; the factories
 below are the from-scratch tasks.
@@ -22,12 +25,28 @@ from __future__ import annotations
 from typing import Any
 
 from mjlab.envs import ManagerBasedRlEnvCfg
+from mjlab.managers.curriculum_manager import CurriculumTermCfg
+from mjlab.managers.event_manager import EventTermCfg
+from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.tasks.velocity.config.g1.env_cfgs import unitree_g1_rough_env_cfg
 from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
 
+from ame.mdp.curriculums import terrain_levels_floor
+from ame.mdp.events import LATTICE_YAWS, SPAWN_POSE, reset_root_state_on_patches
+from ame.mdp.metrics import (
+  command_speed,
+  pelvis_speed,
+  pelvis_vel_error,
+  pelvis_yaw_error,
+)
 from ame.reward_cfg import apply_ame2_rewards, rebalance
 from ame.scan import apply_scan
-from ame.terrains import ame_terrains_cfg, play_board, stage_terrains_cfg
+from ame.terrains import (
+  ame_terrains_cfg,
+  gap_board_cfg,
+  play_board,
+  stage_terrains_cfg,
+)
 
 REWARD_STACKS = ("mjlab", "ame2", "ame2_rebalanced")
 
@@ -40,6 +59,10 @@ TWIST_RANGES = {
   "ang_vel_z": (-1.0, 1.0),
 }
 """A small reverse band for gate manoeuvring; ``vy`` opened for the twist box."""
+
+GAP_CURRICULUM = {"floor": 0, "rule": "tracking", "spawn_max": 2, "track_ratio": 0.6}
+"""Rows 0-2 to start; a timed-out episode promotes only if it covered 60 % of
+its commanded speed, a stall or an early fall demotes."""
 
 STAGE_REWARDS = {
   # (stage 1, stage 2) weights, from the reference's FINETUNE conditionals.
@@ -89,6 +112,74 @@ def apply_rewards(cfg: Any, stack: str = "ame2_rebalanced") -> None:
     rebalance(cfg.rewards)
 
 
+def apply_patch_spawn(
+  cfg: Any,
+  pose_range: dict[str, tuple[float, float]] | None = None,
+  yaw_choices: tuple[float, ...] = LATTICE_YAWS,
+) -> None:
+  """Replace ``reset_base`` with the flat-patch spawn (same slot, same order).
+
+  In play mjlab appends ``randomize_terrain`` after the base reset, which
+  moves the origin after the robot is placed; the draw is put first so the
+  robot lands on the tile it was assigned."""
+  if "reset_base" not in cfg.events:
+    raise ValueError("no reset_base event to replace")
+  cfg.events["reset_base"] = EventTermCfg(
+    func=reset_root_state_on_patches,
+    mode="reset",
+    params={
+      "patch_name": "spawn",
+      "pose_range": dict(pose_range or SPAWN_POSE),
+      "velocity_range": {},
+      "yaw_choices": tuple(yaw_choices),
+    },
+  )
+  if "randomize_terrain" in cfg.events:
+    events = {"randomize_terrain": cfg.events.pop("randomize_terrain")}
+    events.update(cfg.events)
+    cfg.events = events
+
+
+def apply_terrain_floor(
+  cfg: Any,
+  floor: int,
+  command_name: str = "twist",
+  rule: str = "endpoint",
+  spawn_max: int | None = None,
+  track_ratio: float = 0.6,
+  hold_iters: int = 0,
+  steps_per_iter: int = 24,
+) -> None:
+  """Spawn on rows ``floor`` .. ``spawn_max`` and never demote below ``floor``;
+  ``rule`` / ``track_ratio`` as in :class:`ame.mdp.terrain_levels_floor`;
+  ``hold_iters`` freezes the levels for the first iterations."""
+  cfg.scene.terrain.max_init_terrain_level = floor if spawn_max is None else spawn_max
+  cfg.curriculum["terrain_levels"] = CurriculumTermCfg(
+    func=terrain_levels_floor,
+    params={
+      "command_name": command_name,
+      "floor": floor,
+      "rule": rule,
+      "track_ratio": track_ratio,
+      "hold_steps": hold_iters * steps_per_iter,
+    },
+  )
+
+
+def add_tracking_metrics(cfg: Any, command_name: str = "twist") -> None:
+  """Log pelvis tracking error, speed and commanded speed as episode means."""
+  cfg.metrics["pelvis_vel_error"] = MetricsTermCfg(
+    func=pelvis_vel_error, params={"command_name": command_name}
+  )
+  cfg.metrics["pelvis_yaw_error"] = MetricsTermCfg(
+    func=pelvis_yaw_error, params={"command_name": command_name}
+  )
+  cfg.metrics["pelvis_speed"] = MetricsTermCfg(func=pelvis_speed)
+  cfg.metrics["command_speed"] = MetricsTermCfg(
+    func=command_speed, params={"command_name": command_name}
+  )
+
+
 def ame_rough_env_cfg(
   play: bool = False,
   rewards: str = "ame2_rebalanced",
@@ -134,16 +225,38 @@ def ame_stage_env_cfg(stage: int, play: bool = False) -> ManagerBasedRlEnvCfg:
   return cfg
 
 
+def ame_gap_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  """The plain AME policy on the gap board under mjlab's G1 rewards.
+
+  Uniform 0.40 m stones whose gap is the difficulty (row 0 is a floor),
+  on-stone spawns with a lattice-aligned heading, the tracking-gated
+  curriculum, mjlab's reward set and domain randomisation, and the deployment
+  observation set in the actor (no ``base_lin_vel``)."""
+  cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
+  apply_terrain(cfg, gap_board_cfg(), play)
+  apply_deploy_observations(cfg)
+  apply_patch_spawn(cfg)
+  add_tracking_metrics(cfg)
+  if not play:
+    apply_terrain_floor(cfg, command_name="twist", **GAP_CURRICULUM)
+  return cfg
+
+
 __all__ = [
+  "GAP_CURRICULUM",
   "NUM_ENVS",
   "REWARD_STACKS",
   "STAGE_REWARDS",
   "TWIST_RANGES",
+  "add_tracking_metrics",
+  "ame_gap_env_cfg",
   "ame_rough_env_cfg",
   "ame_stage_env_cfg",
   "apply_deploy_observations",
+  "apply_patch_spawn",
   "apply_rewards",
   "apply_scan",
   "apply_terrain",
+  "apply_terrain_floor",
   "apply_twist_commands",
 ]

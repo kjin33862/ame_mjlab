@@ -9,7 +9,9 @@ reused on other tasks.  Importing the package (mjlab does it through the
 * ``Ame-Velocity-Rough-G1`` — dense AME encoder, rebalanced AME-2 rewards;
 * ``Delta-Velocity-Rough-G1`` — the same task with the DELTA encoder;
 * ``Ame-Stage1-Velocity-Rough-G1`` / ``Ame-Stage2-Velocity-Rough-G1`` —
-  SII-FUSC's two-stage schedule (clean perception, then noise and DR).
+  SII-FUSC's two-stage schedule (clean perception, then noise and DR);
+* ``Ame-Mjlab-Gap-Velocity-Rough-G1`` — the dense AME encoder on the gap
+  board under mjlab's G1 rewards, with the deployment actor observations.
 
 Train / play with mjlab's own CLIs::
 
@@ -21,7 +23,7 @@ from __future__ import annotations
 
 from mjlab.tasks.registry import register_mjlab_task
 
-from ame.env_cfg import ame_rough_env_cfg, ame_stage_env_cfg
+from ame.env_cfg import ame_gap_env_cfg, ame_rough_env_cfg, ame_stage_env_cfg
 from ame.rl_cfg import ame_symmetric_ppo_runner_cfg, delta_ppo_runner_cfg
 
 register_mjlab_task(
@@ -45,3 +47,10 @@ for _stage in (1, 2):
     play_env_cfg=ame_stage_env_cfg(_stage, play=True),
     rl_cfg=ame_symmetric_ppo_runner_cfg(),
   )
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(),
+  play_env_cfg=ame_gap_env_cfg(play=True),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)

@@ -391,3 +391,107 @@ for low memory while the Shuang pass-2 retry of `stone_lattice` d0 s0 ran alone 
 available, 6 GB swap). Not restarted (that needs the user's go-ahead); the session's own scheduled check-ins pick up
 the end instead. Shuang pass 1: 125/126 valid (correction: the noise sweep is 11 conditions = 33 runs, so 126 runs per
 model, not 129).
+
+### Part B — results (both matrices complete: 126/126 valid runs per model)
+
+Timeline: launch 01:10 (parallel) -> baseline stopped 02:15 (RAM) -> Shuang done 04:12 (182 min, its pass-2 retry of
+`stone_lattice` d0 s0 succeeded: 1.00) -> baseline restarted 04:13, done 04:49 (36 min, 62 new runs). No other failed or
+invalid run. Aggregation: `uv run python scripts/aggregate_matrix.py --models baseline shuang_gap2048` -> 252 runs,
+no incomplete cell; `logs/eval_results/matrix_plots/{matrix_summary.csv, success_vs_difficulty.png,
+single_support.png, noise_sweep.png}`. Every number: 8x8 tiles x seeds 0 1 2 = 192 robots, vx = 1 m/s, noise off
+(matrix), forward >= 4 m rule, both checkpoints in the same eval env (the `Ame-Velocity-Rough-G1` play env, incl.
+the illegal-contact termination; Shuang's actor without `base_lin_vel`).
+
+**Success rate, baseline / shuang_gap2048** (`success_vs_difficulty.png`; 95 % Wilson CIs in the CSV, about ±0.03-0.07):
+
+| terrain | d=0 | 0.25 | 0.5 | 0.75 | 1.0 |
+|---|---|---|---|---|---|
+| flat | 1.00 / 1.00 | - | - | - | - |
+| pyramid_stairs | 1.00 / 0.99 | 1.00 / 1.00 | 1.00 / 1.00 | 0.96 / 1.00 | 0.87 / 0.94 |
+| pyramid_stairs_inv | 1.00 / 0.04 | 1.00 / 0.00 | 0.92 / 0.00 | 0.27 / 0.00 | 0.01 / 0.00 |
+| random_rough | 0.95 / 0.96 | 0.96 / 0.98 | 0.93 / 0.96 | 0.94 / 0.97 | 0.96 / 0.98 |
+| wave | 1.00 / 0.38 | 1.00 / 1.00 | 0.99 / 1.00 | 0.78 / 0.81 | 0.10 / 0.11 |
+| stone_lattice | 1.00 / 1.00 | 0.00 / 0.95 | 0.00 / 0.84 | 0.00 / 0.69 | 0.00 / 0.25 |
+| stepping_stones | 0.00 / 0.67 | 0.01 / 0.98 | 0.00 / 0.97 | 0.00 / 0.54 | 0.00 / 0.16 |
+
+**Noise sweep, stone_lattice d = 0.5** (`noise_sweep.png`; one parameter changed from "off", proprio noise off
+except "train"):
+
+| condition | baseline | shuang_gap2048 (95% CI) |
+|---|---|---|
+| off | 0.00 | 0.85 (0.79-0.89) |
+| train | 0.00 | 0.86 (0.80-0.90) |
+| sigma0.06 | 0.00 | 0.81 (0.75-0.86) |
+| sigma0.10 | 0.00 | 0.87 (0.81-0.91) |
+| offset0.10 | 0.00 | 0.86 (0.80-0.90) |
+| offset0.15 | 0.00 | 0.79 (0.72-0.84) |
+| drift1 | 0.00 | 0.88 (0.83-0.92) |
+| drift2 | 0.00 | 0.84 (0.78-0.88) |
+| drift3 | 0.00 | 0.66 (0.59-0.72) |
+| delay5 | 0.00 | 0.78 (0.71-0.83) |
+| delay10 | 0.00 | 0.70 (0.64-0.76) |
+
+**Gait** (fractions of tracked steps; this table: unweighted mean of the cells over difficulties; the plot
+`single_support.png` pools envs, same picture):
+
+| terrain | baseline double / single / flight | shuang double / single / flight |
+|---|---|---|
+| flat | 0.62 / 0.05 / 0.33 | 0.25 / 0.72 / 0.02 |
+| pyramid_stairs | 0.57 / 0.12 / 0.32 | 0.24 / 0.71 / 0.05 |
+| pyramid_stairs_inv | 0.60 / 0.07 / 0.33 | 0.19 / 0.80 / 0.02 |
+| random_rough | 0.54 / 0.16 / 0.30 | 0.19 / 0.78 / 0.03 |
+| wave | 0.59 / 0.09 / 0.32 | 0.24 / 0.74 / 0.02 |
+| stone_lattice | 0.64 / 0.05 / 0.31 | 0.26 / 0.68 / 0.05 |
+| stepping_stones | 0.65 / 0.08 / 0.27 | 0.22 / 0.74 / 0.04 |
+
+### Confirmed (measured)
+
+- **Stones:** the baseline never gets across a gap: stone_lattice is 1.00 only at d = 0 (seamless floor) and 0.00
+  from d = 0.25 (gap 0.11 m) on, every robot failing by contact (mean max forward 0.00-0.01 m at d 0.25/0.5);
+  stepping_stones 0.00-0.01 at every d (as on 2026-10-17). Shuang: stone_lattice 1.00 / 0.95 / 0.84 / 0.69 / 0.25
+  (gap 0 / 0.11 / 0.225 / 0.34 / 0.45 m); fails mostly by contact, then orientation.
+- **New rule changes Shuang's stepping_stones d = 0:** 0.67 forward vs 0.97 any-direction (`success_any_dir_rate`);
+  30 % stuck, mean forward at the end 0.47 m but max xy 9.9 m: the sideways turn of 2026-10-17 now counts as no
+  success. Same at d = 0.75 (0.54 vs 0.79, 17 % stuck). Elsewhere forward and any-direction agree within 0.03,
+  except pyramid_stairs_inv d = 0 for Shuang (0.04 vs 0.39).
+- **Shuang does not climb the inverted pyramid** (start in a pit, stairs go UP): 0.00-0.04 at every d, 96-100 %
+  stuck (survives to the time-out), no falls; mean max forward 1.1-2.1 m, forward at the end -0.8 to -2.9 m.
+  Video `logs/eval_videos/shuang_gap2048/pyramid_stairs_inv_d0.5_off/rl-video-step-0.mp4` (8 s): it walks to the
+  first riser, turns away and wanders on the pit floor. On pyramid_stairs (start on the summit, stairs go DOWN) it
+  is 0.94-1.00. The baseline climbs up to d = 0.5 (0.92), then drops (0.27, 0.01; contact).
+- **Shuang on wave d = 0: 0.38** (61 % fail: contact 69, mostly knees on the terrain, and orientation 49), while
+  d = 0.25 and 0.5 are 1.00. Baseline 1.00. Both models drop to ~0.10 at d = 1.0.
+- random_rough: both 0.93-0.98 at every d. pyramid_stairs: both >= 0.87.
+- **Noise (Shuang):** train preset (0.86) = off (0.85); sigma up to 0.10 m, offset ±0.10 m and drift 1-2 cells
+  stay within the CI of "off". Clear drops: drift 3 cells (0.66), map delay 10 steps (0.70), delay 5 (0.78),
+  offset ±0.15 (0.79; CI overlaps "off" slightly). Baseline 0.00 everywhere (fails at d = 0.5 even without noise).
+- Run-to-run check: `nz-off` (0.85) vs the identical matrix cell (0.84), same seeds and settings: a difference of
+  2 robots out of 192, well inside the CI (GPU non-determinism, as seen before).
+- Gait: baseline hops on every terrain (double 0.54-0.65, flight 0.27-0.33, single 0.05-0.16); Shuang walks
+  (single 0.68-0.80, double 0.19-0.26, flight 0.02-0.05).
+
+### Guesses (not verified)
+
+- Pyramid_stairs_inv: Shuang's board has pyramid_stairs_inv (20 %) with the same parameters, so the stairs are not
+  unseen; the eval spawns at the pit centre facing +x with yaw 0, while his training uses the `spawn` flat-patch
+  reset with a lattice yaw (0/90/180/270 deg ± 0.15); where those patches lie on his stairs tiles was not checked. Why it turns away from rising stairs is unknown; maybe the tracking-gated
+  curriculum let it avoid ascending (turning costs only yaw tracking, which his README says is weak).
+- Wave d = 0 (amplitude ~0, nearly flat height field) being worse than d = 0.25 for Shuang is unexplained; a single
+  8 s viewer episode (`logs/eval_videos/shuang_gap2048/wave_d0_off/`) walked fine. The knee->terrain contacts would
+  not terminate in his own task (no illegal-contact term), so part of this may be the stricter eval rule.
+- The noise drops at drift 3 / delay 10 suggest the policy steps where the map says the stone is; with a stale or
+  shifted map it misses stones. Not checked per failure.
+
+### Part C — tomorrow (third checkpoint `gap_1024`)
+
+Copy the run folder to `checkpoints/gap_1024/` first. Then, from the repo root, ONE matrix at a time (the
+stone_lattice d0 runs need ~24 GB host RAM; close the browser if possible):
+
+    nohup systemd-inhibit --what=sleep:idle --why=eval bash -c 'C=$(ls checkpoints/gap_1024/model_*.pt | sort -V | tail -1); echo "checkpoint: $C"; bash scripts/run_policy_matrix.sh gap_1024 "$C"; uv run python scripts/aggregate_matrix.py --models baseline shuang_gap2048 gap_1024' > logs/eval_results/matrix_gap_1024.log 2>&1 &
+
+(`ls | sort -V | tail -1` picks the highest iteration; checked on `shuang_gap2048` -> `model_14999.pt`. The actor
+observation set is read from the checkpoint. Expected ~2.5-3 h for a walking policy, judging by Shuang's 182 min.)
+Progress: `tail logs/eval_results/matrix_gap_1024.log`.
+
+Extra videos (Shuang, 8 s): `logs/eval_videos/shuang_gap2048/{pyramid_stairs_inv_d0.5_off,wave_d0_off}/`.
+Korean summary for the user: `notes/overnight_summary_ko.md`. Finished 05:05; nothing left running.

@@ -317,3 +317,62 @@ than 16 GB of GPU memory per the upstream README.)
   him than his training was.
 - Not tested: his own lattice board in the eval (would need the gap task, i.e. the merge), noise on, and turning
   commands.
+
+## 2026-10-18 — Overnight: merge, forward-only success, stone_lattice, full matrix (unattended)
+
+Run unattended (user asleep); choices made without asking are marked **Choice**.
+
+### Part A — eval code
+
+1. **Merge.** `git merge --no-ff upstream/main` on `eval` -> `d2fa505`, no conflicts. `uv run pytest`: 70 passed,
+   1 skipped (as predicted). `uv run list-envs`: `Ame-Mjlab-Gap-Velocity-Rough-G1` is listed (with
+   `Ame-Stage1/2-Velocity-Rough-G1`, `Ame-Velocity-Rough-G1`).
+2. **Success = forward progress only** (`scripts/evaluate.py`). forward = xy displacement from spawn projected on the
+   spawn heading (yaw 0 -> +x; the command is vx in the base frame, so the command direction at spawn). Success when
+   forward >= `--success_dist` (4.0 m). New per-env column `forward_at_end_m` (forward displacement at the last
+   tracked step: success, fail or time-out); `max_xy_disp_m` (any direction) kept; `max_forward_m` is now the
+   projection on the spawn heading (identical to before since spawn yaw is always 0). Summary: `success_rule`,
+   `success_dist`, `mean_forward_at_end_m`, `mean_max_xy_disp_m`.
+   **Choice:** `--success_rule forward|any` (default `forward`) so the old rule can still be reproduced.
+   **Consequence:** a robot that walks sideways is now `stuck` at the time-out (or fails later), not `success`.
+   Old results (`*_cmp` etc.) used the any-direction rule and are not comparable on stones.
+3. **`--terrain stone_lattice`** (`src/ame/eval/terrains.py`): the gap board's `BoxStoneLatticeTerrainCfg` with
+   the same fields (0.40 m stones, `gap_range` (0, 0.45) -> gap = 0.45·d, 2 m pit, 8 m tile; copied from
+   `gap_board_cfg()` so it follows any change there), proportion 1, no spawn patches. `stepping_stones` unchanged
+   (test checks it is the same config as the training mix).
+   **Choice / found:** the lattice is centred on the tile, and with an even stone count per side the tile centre is
+   a gap crossing: d = 0.25 (14 stones, nearest stone centre 0.26 m away) and d = 1.0 (8 stones, 0.42 m). The eval
+   spawns at the tile origin with yaw 0, so the robot would start over the pit. The eval subclass
+   `EvalStoneLatticeTerrainCfg` therefore puts the tile origin on the stone nearest the tile centre (ties: lowest x,
+   then lowest y = most room ahead). At d = 0.5 / 0.75 there is a stone at the centre; d = 0 is a seamless floor.
+   Training code untouched.
+4. `view_eval.py` takes `--terrain stone_lattice` (it already passed `--terrain` through; help/doc updated).
+   Tests (`tests/test_eval.py`): forward rule (sideways/backward/diagonal/rotated heading, `any` rule), lattice cfg
+   equals the gap board's for d in {0, .25, .5, .75, 1}, origin is a stone centre nearest the tile centre, old
+   stepping_stones unchanged. `uv run pytest`: 77 passed, 1 skipped. Commit `d63f3b8`.
+   Smoke runs on GPU (tag `smoke`, kept): Shuang stone_lattice d = 1.0: valid, spawn offset 0, height 0.79 m after
+   step 1, success 0.31 (21 s wall); baseline d = 0.25: valid, success 0, fail 1.0 (42 s wall).
+
+### Part B — setup
+
+5. `scripts/run_policy_matrix.sh <model_name> <checkpoint>`: matrix (7 terrains, d 0/.25/.5/.75/1, flat d = 0
+   only, seeds 0 1 2, `--noise off`, 8x8 tiles = 64 robots) = 93 runs, then noise sweep on stone_lattice d = 0.5 =
+   36 runs; tags `mx-<terrain>-d<d>-s<seed>` / `nz-<cond>-s<seed>`. Restart-safe (skips a valid summary with the same
+   model_name and tag); the list is gone through a second time only if pass 1 had failures (= one retry).
+   Gait fractions are always recorded by `evaluate.py` (no flag needed).
+   **Choice (noise sweep):** each map parameter is changed alone from "noise off" (no proprio noise, other map
+   terms 0); "train" = the training preset (map sigma 0.03, offset 0.05, drift 1 + proprio noise). The previous
+   stepping-stone sweep changed parameters from "proprio on, map off" instead, so the two are not the same baseline.
+   **Choice:** "off" is run as its own condition (`nz-off-*`) although it equals the matrix cell stone_lattice d = 0.5:
+   costs 6 short runs and doubles as a run-to-run (GPU non-determinism) check.
+   `scripts/aggregate_matrix.py`: pools seeds per cell, Wilson 95 % CI, CSV + three plots in
+   `logs/eval_results/matrix_plots/`. Commit `87f22b9`.
+6. **Timing:** one run 14-42 s alone (build ~5 s; short when robots succeed or fail early, up to 1000 steps when
+   they survive without progress). ~20 s per run with both models in parallel. Estimate: 129 runs x ~20-40 s
+   ≈ 45-90 min per model. **Choice:** both checkpoints run at the same time (two processes, ~3 GB host RAM and
+   ~0.4 GB GPU each; 30 GB RAM / 8 GB GPU available). Launched 01:10 with `nohup systemd-inhibit --what=sleep:idle`;
+   logs `logs/eval_results/matrix_{baseline,shuang_gap2048}.log`, per run `logs/eval_results/matrix_logs/`.
+8. **Videos** (4 s, stone_lattice d = 0.5, noise off, seed 0):
+   `logs/eval_videos/baseline/stone_lattice_d0.5_off/rl-video-step-0.mp4` (stays on its start stone, hopping in place)
+   and `logs/eval_videos/shuang_gap2048/stone_lattice_d0.5_off/rl-video-step-0.mp4` (walks forward over the stones
+   and reaches the tile border at ~3.8 s). Looked at 3 frames each (0.5, 2, 3.8 s).

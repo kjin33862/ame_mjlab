@@ -357,7 +357,7 @@ Run unattended (user asleep); choices made without asking are marked **Choice**.
 
 5. `scripts/run_policy_matrix.sh <model_name> <checkpoint>`: matrix (7 terrains, d 0/.25/.5/.75/1, flat d = 0
    only, seeds 0 1 2, `--noise off`, 8x8 tiles = 64 robots) = 93 runs, then noise sweep on stone_lattice d = 0.5 =
-   36 runs; tags `mx-<terrain>-d<d>-s<seed>` / `nz-<cond>-s<seed>`. Restart-safe (skips a valid summary with the same
+   33 runs (11 conditions x 3 seeds; 126 runs per model in total); tags `mx-<terrain>-d<d>-s<seed>` / `nz-<cond>-s<seed>`. Restart-safe (skips a valid summary with the same
    model_name and tag); the list is gone through a second time only if pass 1 had failures (= one retry).
    Gait fractions are always recorded by `evaluate.py` (no flag needed).
    **Choice (noise sweep):** each map parameter is changed alone from "noise off" (no proprio noise, other map
@@ -368,7 +368,7 @@ Run unattended (user asleep); choices made without asking are marked **Choice**.
    `scripts/aggregate_matrix.py`: pools seeds per cell, Wilson 95 % CI, CSV + three plots in
    `logs/eval_results/matrix_plots/`. Commit `87f22b9`.
 6. **Timing:** one run 14-42 s alone (build ~5 s; short when robots succeed or fail early, up to 1000 steps when
-   they survive without progress). ~20 s per run with both models in parallel. Estimate: 129 runs x ~20-40 s
+   they survive without progress). ~20 s per run with both models in parallel. Estimate: 126 runs x ~20-40 s
    ≈ 45-90 min per model. **Choice:** both checkpoints run at the same time (two processes, ~3 GB host RAM and
    ~0.4 GB GPU each; 30 GB RAM / 8 GB GPU available). Launched 01:10 with `nohup systemd-inhibit --what=sleep:idle`;
    logs `logs/eval_results/matrix_{baseline,shuang_gap2048}.log`, per run `logs/eval_results/matrix_logs/`.
@@ -385,3 +385,9 @@ failed (`warp RuntimeError: Failed to allocate 1785485024 bytes on device 'cuda:
 was stopped by hand (lost one pyramid_stairs run in progress) and chained to restart after the Shuang loop exits
 (`tail --pid`, restart-safe, so its 63 finished runs are skipped). From then on one model at a time. The failed
 Shuang run is retried in the script's second pass. For `gap_1024`: run alone, never two matrices at once.
+
+**04:07 — watcher stopped again.** The re-armed 5-min PID watcher (asked for by the user) was killed by Claude Code
+for low memory while the Shuang pass-2 retry of `stone_lattice` d0 s0 ran alone at 25 GB RSS (RAM 29/30 GB, 1 GB
+available, 6 GB swap). Not restarted (that needs the user's go-ahead); the session's own scheduled check-ins pick up
+the end instead. Shuang pass 1: 125/126 valid (correction: the noise sweep is 11 conditions = 33 runs, so 126 runs per
+model, not 129).

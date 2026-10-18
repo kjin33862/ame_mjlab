@@ -10,6 +10,9 @@ Differences from ``ame_rough_env_cfg(play=True)``:
 * no ``randomize_terrain`` reset event, no CoM randomization (foot friction and
   encoder bias stay on, as in play);
 * fixed twist command (default ``vx = 1, vy = 0, wz = 0``), no standing envs;
+  or, with ``commands="train"``, the gap task's training twist commands
+  (random body-frame twist resampled every 3-8 s, 5 % standing, 20 %
+  straight forward);
 * 20 s episodes;
 * map / proprio noise from a preset or explicit values (:func:`apply_eval_noise`);
 * the illegal-contact termination also records which body touched (same
@@ -34,7 +37,7 @@ from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
-from ame.env_cfg import ame_rough_env_cfg, apply_deploy_observations
+from ame.env_cfg import ame_gap_env_cfg, ame_rough_env_cfg, apply_deploy_observations
 from ame.eval.observations import elevation_map_eval
 from ame.eval.terminations import illegal_contact_recorded
 from ame.eval.terrains import stone_lattice_cfg
@@ -63,6 +66,9 @@ OFF_HEIGHT_NOISE = {
   "drift_cells": 0,
   "delay_steps": 1,
 }
+COMMAND_MODES = ("fixed", "train")
+"""``fixed``: the constant ``command`` twist; ``train``: the gap task's training
+twist commands."""
 ACTOR_OBS = ("full", "deploy")
 """Actor observation sets: ``full`` (with ``base_lin_vel``, the AME tasks) or
 ``deploy`` (without it)."""
@@ -88,11 +94,14 @@ def eval_env_cfg(
   com_dr: bool = False,
   spawn_asym: float = 0.0,
   actor_obs: str = "full",
+  commands: str = "fixed",
 ) -> ManagerBasedRlEnvCfg:
   """Build the evaluation config.  ``height_noise`` defaults to the training
   map noise; ``proprio_noise`` turns on the actor's training noise."""
   if terrain not in EVAL_TERRAINS:
     raise ValueError(f"terrain must be one of {EVAL_TERRAINS}, got {terrain!r}")
+  if commands not in COMMAND_MODES:
+    raise ValueError(f"commands must be one of {COMMAND_MODES}, got {commands!r}")
   if actor_obs not in ACTOR_OBS:
     raise ValueError(f"actor_obs must be one of {ACTOR_OBS}, got {actor_obs!r}")
   cfg = ame_rough_env_cfg(play=True)
@@ -142,7 +151,22 @@ def eval_env_cfg(
       },
     )
 
-  # Fixed twist command.
+  if commands == "train":
+    twist = copy.deepcopy(ame_gap_env_cfg().commands["twist"])
+    twist.debug_vis = False
+    cfg.commands["twist"] = twist
+  else:
+    _fix_twist(cfg, command)
+
+  apply_eval_noise(cfg, height_noise or dict(TRAIN_HEIGHT_NOISE), proprio_noise)
+
+  # Same contact termination, plus a record of the touching body.
+  cfg.terminations["illegal_contact"].func = illegal_contact_recorded
+  return cfg
+
+
+def _fix_twist(cfg: ManagerBasedRlEnvCfg, command: tuple[float, float, float]) -> None:
+  """A constant twist command for every env, no standing or forward-only draws."""
   twist: Any = cfg.commands["twist"]
   vx, vy, wz = command
   twist.ranges.lin_vel_x = (vx, vx)
@@ -154,12 +178,6 @@ def eval_env_cfg(
   twist.rel_world_envs = 0.0
   twist.init_velocity_prob = 0.0
   twist.debug_vis = False
-
-  apply_eval_noise(cfg, height_noise or dict(TRAIN_HEIGHT_NOISE), proprio_noise)
-
-  # Same contact termination, plus a record of the touching body.
-  cfg.terminations["illegal_contact"].func = illegal_contact_recorded
-  return cfg
 
 
 def apply_eval_noise(

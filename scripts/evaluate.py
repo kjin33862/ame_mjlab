@@ -16,6 +16,14 @@ afterwards are ignored):
 Per env, max_forward_m is the largest forward displacement, forward_at_end_m the forward displacement at the last
 tracked step (success, fail or time-out), max_xy_disp_m the largest displacement in any direction.
 
+Curriculum audit (--curriculum_audit): every env is followed to the real end of its FIRST episode (time-out or a
+termination; the outcome rules above still stop at success / fall), and per_env.csv gets what the gap task's
+"tracking" curriculum would decide for that episode (ame.eval.audit: promote_distance, promote_speed_only, demote,
+none), the speed ratio sum|v_xy| / sum|cmd_xy|, max_xy_episode_m, escaped_pit (max_xy_episode_m >= --escape_dist,
+3 m = the inverted-pyramid rim along an axis), max_rise_m (base z above spawn), heading_change_deg (final - initial
+yaw, wrapped) and total_turn_deg (accumulated signed yaw). --commands train replaces the fixed vx = 1 m/s with the gap
+task's random training twist commands.
+
 Gait, per env over its tracked steps (feet_ground_contact sensor, sampled once per policy step at 50 Hz): the
 fraction of steps with both feet on the terrain (double support), exactly one (single support), or none (flight).
 
@@ -187,6 +195,23 @@ def build_parser() -> argparse.ArgumentParser:
   # outcome rules
   p.add_argument("--success_dist", type=float, default=4.0)
   p.add_argument(
+    "--commands",
+    default="fixed",
+    choices=["fixed", "train"],
+    help="fixed: vx = 1 m/s for every env. train: the gap task's random training twist commands.",
+  )
+  p.add_argument(
+    "--curriculum_audit",
+    action="store_true",
+    help="Follow every env to the end of its first episode and record what the gap curriculum would decide.",
+  )
+  p.add_argument(
+    "--escape_dist",
+    type=float,
+    default=3.0,
+    help="Audit: escaped_pit = max xy distance from spawn in the first episode >= this [m].",
+  )
+  p.add_argument(
     "--success_rule",
     default="forward",
     choices=["forward", "any"],
@@ -287,6 +312,26 @@ def success_progress(disp, heading, rule: str):
   return forward, xy_dist, forward if rule == "forward" else xy_dist
 
 
+def audit_summary(rows: list[dict], escape_dist: float) -> dict:
+  """Counts of the audit columns over envs (see the module docstring)."""
+  n = len(rows)
+  decisions = Counter(r["curriculum_decision"] for r in rows)
+  speed_no_escape = sum(
+    r["curriculum_decision"] == "promote_speed_only" and not r["escaped_pit"]
+    for r in rows
+  )
+  return {
+    "decisions": dict(decisions),
+    "escaped_pit": rate(sum(r["escaped_pit"] for r in rows), n),
+    "escape_dist_m": escape_dist,
+    "promote_speed_only_not_escaped": rate(speed_no_escape, n),
+    "mean_abs_heading_change_deg": sum(abs(r["heading_change_deg"]) for r in rows) / n,
+    "mean_abs_total_turn_deg": sum(abs(r["total_turn_deg"]) for r in rows) / n,
+    "mean_speed_ratio": sum(r["speed_ratio"] for r in rows) / n,
+    "mean_max_rise_m": sum(r["max_rise_m"] for r in rows) / n,
+  }
+
+
 def host_max_rss_mb() -> float:
   return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
 
@@ -311,8 +356,11 @@ def main():
     PRE_RESET_POS_ATTR,
     assign_tiles,
     checkpoint_actor_obs,
+    curriculum_decision,
     eval_env_cfg,
+    wrap_angle,
   )
+  from ame.eval.audit import DECISIONS
   from ame.reward_cfg import FEET_CONTACT_SENSOR
 
   configure_torch_backends()
@@ -356,6 +404,7 @@ def main():
     com_dr=args.com_dr,
     spawn_asym=args.spawn_asym,
     actor_obs=args.actor_obs,
+    commands=args.commands,
   )
   env_cfg.scene.num_envs = args.num_envs
   rl_cfg = load_rl_cfg(args.task)
@@ -429,6 +478,17 @@ def main():
   max_forward = torch.zeros(num_envs, device=device)
   forward_end = torch.zeros(num_envs, device=device)
   max_xy_disp = torch.zeros(num_envs, device=device)
+  # curriculum audit: the first episode as the env runs it (not cut at success or a fall)
+  alive = torch.ones(num_envs, dtype=torch.bool, device=device)
+  ep_timed_out = torch.zeros(num_envs, dtype=torch.bool, device=device)
+  ep_len = torch.zeros(num_envs, dtype=torch.long, device=device)
+  ep_dist = torch.zeros(num_envs, device=device)
+  ep_max_xy = torch.zeros(num_envs, device=device)
+  ep_max_rise = torch.zeros(num_envs, device=device)
+  moved_sum = torch.zeros(num_envs, device=device)
+  asked_sum = torch.zeros(num_envs, device=device)
+  last_heading = spawn_heading.clone()
+  total_turn = torch.zeros(num_envs, device=device)
   err_sum = torch.zeros(num_envs, device=device)
   height_sum = torch.zeros(num_envs, device=device)
   n_height = torch.zeros(num_envs, dtype=torch.long, device=device)
@@ -454,6 +514,8 @@ def main():
     run_name += f"_asym{args.spawn_asym:g}"
   if args.stochastic_actions:
     run_name += "_stoch"
+  if args.commands != "fixed":
+    run_name += f"_cmd{args.commands}"
   if args.tag:
     run_name += f"_{args.tag}"
   out_dir = os.path.join(os.path.expanduser(args.out_root), run_name)
@@ -476,6 +538,8 @@ def main():
     "height_noise": height_noise,
     "proprio_noise": proprio,
     "stochastic_actions": args.stochastic_actions,
+    "commands": args.commands,
+    "curriculum_audit": args.curriculum_audit,
     "spawn_asym": args.spawn_asym,
     "tag": args.tag,
   }
@@ -540,7 +604,7 @@ def main():
   step = 0
   t_start = time.time()
   with torch.inference_mode():
-    while active.any() and step < step_limit:
+    while (active | (alive & args.curriculum_audit)).any() and step < step_limit:
       actions = policy(obs)
       obs, _, _, _ = env.step(actions)
       step += 1
@@ -579,6 +643,27 @@ def main():
       forward_end = torch.where(ok, forward, forward_end)
       max_xy_disp = torch.where(ok, torch.maximum(max_xy_disp, xy_dist), max_xy_disp)
       active &= ~ended
+
+      # curriculum audit, first episode: terminal position for envs whose episode ends now; speeds and yaw only
+      # from envs still in it (an ended env's velocity and heading are already the reset state's)
+      ep_end = alive & (base_env.reset_terminated | time_out)
+      ep_ok = alive & torch.isfinite(xy_dist)
+      ep_max_xy = torch.where(ep_ok, torch.maximum(ep_max_xy, xy_dist), ep_max_xy)
+      rise = pos_eff[:, 2] - spawn_pos[:, 2]
+      ep_max_rise = torch.where(ep_ok, torch.maximum(ep_max_rise, rise), ep_max_rise)
+      ep_dist = torch.where(ep_end, xy_dist, ep_dist)
+      ep_timed_out |= ep_end & time_out
+      ep_len = torch.where(ep_end, step, ep_len)
+      running = alive & ~ep_end
+      cmd_now = base_env.command_manager.get_command("twist")
+      moved_sum += torch.where(
+        running, torch.linalg.norm(robot.data.root_link_lin_vel_w[:, :2], dim=-1), 0.0
+      )
+      asked_sum += torch.where(running, torch.linalg.norm(cmd_now[:, :2], dim=-1), 0.0)
+      heading_now = robot.data.heading_w
+      total_turn += torch.where(running, wrap_angle(heading_now - last_heading), 0.0)
+      last_heading = torch.where(running, heading_now, last_heading)
+      alive &= ~ep_end
 
       # still-running envs
       heading = robot.data.heading_w
@@ -661,6 +746,29 @@ def main():
         )
 
   truncated = bool(active.any())  # only if --max_steps cut the run short
+  if (
+    args.curriculum_audit
+  ):  # an episode cut by --max_steps counts as ending there, not timed out
+    ep_len = torch.where(alive, step, ep_len)
+    ep_dist = torch.where(alive, xy_dist, ep_dist)
+    decision = (
+      curriculum_decision(
+        ep_dist,
+        ep_timed_out,
+        ep_len,
+        episode_steps,
+        moved_sum,
+        asked_sum,
+        half_tile=float(terrain.cfg.terrain_generator.size[0]) / 2,
+      )
+      .cpu()
+      .tolist()
+    )
+    heading_change = (
+      torch.rad2deg(wrap_angle(last_heading - spawn_heading)).cpu().tolist()
+    )
+    total_turn_deg = torch.rad2deg(total_turn).cpu().tolist()
+    speed_ratio = (moved_sum / asked_sum.clamp(min=1e-9)).cpu().tolist()
   validity_check = abort_if_invalid(max(step, early_steps))
   outcome[active] = STUCK
   wall_time = time.time() - t_start
@@ -723,6 +831,21 @@ def main():
         "static_friction": float(friction[i]),
       }
     )
+    if args.curriculum_audit:
+      rows[-1].update(
+        {
+          "curriculum_decision": DECISIONS[decision[i]],
+          "episode_timed_out": bool(ep_timed_out[i]),
+          "episode_steps": int(ep_len[i]),
+          "speed_ratio": speed_ratio[i],
+          "end_dist_m": float(ep_dist[i]),
+          "max_xy_episode_m": float(ep_max_xy[i]),
+          "escaped_pit": bool(ep_max_xy[i] >= args.escape_dist),
+          "max_rise_m": float(ep_max_rise[i]),
+          "heading_change_deg": heading_change[i],
+          "total_turn_deg": total_turn_deg[i],
+        }
+      )
 
   # -- summary
   n = num_envs
@@ -786,6 +909,9 @@ def main():
     "mean_max_forward_m": mean([r["max_forward_m"] for r in rows]),
     "mean_forward_at_end_m": mean([r["forward_at_end_m"] for r in rows]),
     "mean_max_xy_disp_m": mean([r["max_xy_disp_m"] for r in rows]),
+    "curriculum_audit": audit_summary(rows, args.escape_dist)
+    if args.curriculum_audit
+    else None,
     "mean_abs_vx_err_survivors": mean(surv_errs),
     "n_survivors": len(surv_errs),
     "median_height_above_support_m": heights[len(heights) // 2]

@@ -421,3 +421,64 @@ def test_stepping_stones_eval_terrain_is_unchanged() -> None:
   ref = ame_terrains_cfg().sub_terrains["stepping_stones"]
   assert type(fam) is type(ref)
   assert {**vars(fam), "proportion": 0} == {**vars(ref), "proportion": 0}
+
+
+def test_curriculum_audit_matches_the_tracking_rule() -> None:
+  from ame.eval import DECISIONS, curriculum_decision
+
+  # far / circled to the time-out fast enough / timed out too slow / fell early / fell late / far but fell early
+  distance = torch.tensor([4.5, 1.0, 1.0, 0.5, 0.5, 4.5])
+  timed_out = torch.tensor([True, True, True, False, False, False])
+  length = torch.tensor([1000, 1000, 1000, 100, 800, 100])
+  moved = torch.tensor([700.0, 700.0, 500.0, 50.0, 400.0, 80.0])
+  asked = torch.full((6,), 1000.0)
+  out = curriculum_decision(
+    distance, timed_out, length, 1000, moved, asked, half_tile=4.0
+  )
+  assert [DECISIONS[i] for i in out.tolist()] == [
+    "promote_distance",
+    "promote_speed_only",
+    "demote",
+    "demote",
+    "none",
+    "promote_distance",
+  ]
+  # standing for the whole episode asks for nothing: surviving it is "tracked"
+  zero = torch.zeros(1)
+  out = curriculum_decision(
+    zero, torch.tensor([True]), torch.tensor([1000]), 1000, zero, zero, 4.0
+  )
+  assert DECISIONS[int(out)] == "promote_speed_only"
+
+
+def test_wrap_angle_and_train_commands_option() -> None:
+  from ame.env_cfg import ame_gap_env_cfg
+  from ame.eval import eval_env_cfg, wrap_angle
+
+  a = torch.tensor([0.0, 3 * torch.pi / 2, -3 * torch.pi / 2, 7.0])
+  assert torch.allclose(
+    wrap_angle(a),
+    torch.tensor([0.0, -torch.pi / 2, torch.pi / 2, 7.0 - 2 * torch.pi]),
+    atol=1e-6,
+  )
+  fixed = eval_env_cfg(num_rows=1, num_cols=1).commands["twist"]
+  assert fixed.ranges.lin_vel_x == (1.0, 1.0) and fixed.rel_standing_envs == 0.0
+  train = eval_env_cfg(num_rows=1, num_cols=1, commands="train").commands["twist"]
+  gap = ame_gap_env_cfg().commands["twist"]
+  assert train.ranges == gap.ranges and not train.heading_command
+  assert (
+    train.rel_standing_envs,
+    train.rel_forward_envs,
+    train.resampling_time_range,
+  ) == (
+    gap.rel_standing_envs,
+    gap.rel_forward_envs,
+    gap.resampling_time_range,
+  )
+  with pytest.raises(ValueError):
+    eval_env_cfg(num_rows=1, num_cols=1, commands="none")
+  ev = _load_evaluate_script()
+  args = ev.build_parser().parse_args(["--random_policy"])
+  assert (
+    args.commands == "fixed" and not args.curriculum_audit and args.escape_dist == 3.0
+  )

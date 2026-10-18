@@ -3,8 +3,10 @@
 Differences from ``ame_rough_env_cfg(play=True)``:
 
 * a ``num_rows x num_cols`` board of ONE terrain family at a FIXED difficulty,
-  generator seeded; env ``i`` spawns at the center of tile
-  ``(i // num_cols % num_rows, i % num_cols)`` with yaw 0 (:func:`assign_tiles`);
+  generator seeded (a family of the AME mix, or ``stone_lattice``); env ``i``
+  spawns at the origin of tile ``(i // num_cols % num_rows, i % num_cols)``
+  with yaw 0 (:func:`assign_tiles`): the tile centre, or on ``stone_lattice``
+  the stone nearest it;
 * no ``randomize_terrain`` reset event, no CoM randomization (foot friction and
   encoder bias stay on, as in play);
 * fixed twist command (default ``vx = 1, vy = 0, wz = 0``), no standing envs;
@@ -35,13 +37,16 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from ame.env_cfg import ame_rough_env_cfg, apply_deploy_observations
 from ame.eval.observations import elevation_map_eval
 from ame.eval.terminations import illegal_contact_recorded
+from ame.eval.terrains import stone_lattice_cfg
 from ame.mdp import observations as ame_obs
 from ame.scan import MAP_GROUP
 from ame.symmetry import has_lin_vel
 from ame.terrains import ame_terrains_cfg
 
-EVAL_TERRAINS = tuple(ame_terrains_cfg().sub_terrains)
-"""Families of the AME training mix; ``stepping_stones`` is the tested one."""
+EVAL_TERRAINS = (*ame_terrains_cfg().sub_terrains, "stone_lattice")
+"""Families of the AME training mix (``stepping_stones`` is the old stones
+tile, with the centre platform), plus ``stone_lattice``: the gap task's lattice
+(gap = 0.45 * difficulty, :mod:`ame.eval.terrains`)."""
 
 TRAIN_HEIGHT_NOISE = {
   "height_sigma": ame_obs._NOISE_STD_M,
@@ -102,7 +107,10 @@ def eval_env_cfg(
   assert cfg.scene.terrain is not None
   gen = cfg.scene.terrain.terrain_generator
   assert gen is not None
-  family = copy.deepcopy(ame_terrains_cfg().sub_terrains[terrain])
+  if terrain == "stone_lattice":
+    family = stone_lattice_cfg()
+  else:
+    family = copy.deepcopy(ame_terrains_cfg().sub_terrains[terrain])
   family.proportion = 1.0
   cfg.scene.terrain.terrain_generator = replace(
     gen,

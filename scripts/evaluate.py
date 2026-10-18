@@ -1,14 +1,20 @@
 """Quantitative evaluation of an AME checkpoint on mjlab (headless, one episode per env).
 
 A port of the Isaac Lab evaluation (AME_Locomotion, branch eval-pipeline) with the same outcome rules and output
-format. Each env spawns at the center of its own terrain tile with yaw 0 and is commanded vx = 1.0 m/s, vy = 0,
+format. Each env spawns at the origin of its own terrain tile (the center; on stone_lattice the stone nearest
+it) with yaw 0 and is commanded vx = 1.0 m/s, vy = 0,
 wz = 0 (pure twist; there is no heading controller). Outcome per env, from its FIRST episode only (auto-resets
 afterwards are ignored):
-    success: base xy displacement from spawn >= --success_dist before a fail
+    success: forward displacement >= --success_dist before a fail; forward = the base xy displacement from spawn
+             projected on the spawn heading (the command direction at spawn: vx in the base frame, yaw 0 = +x).
+             --success_rule any restores the old rule (xy displacement in any direction).
     fail:    a termination other than the time-out (illegal_contact -> "contact", bad_orientation ->
              "orientation", physics_blowup -> "blowup"), or a fall (tilt > --tilt_deg, or base height above the
              supporting surface < --fall_height; optionally base z < spawn z - --spawn_drop), held for --fall_hold_s
     stuck:   neither by the end of the episode
+
+Per env, max_forward_m is the largest forward displacement, forward_at_end_m the forward displacement at the last
+tracked step (success, fail or time-out), max_xy_disp_m the largest displacement in any direction.
 
 Gait, per env over its tracked steps (feet_ground_contact sensor, sampled once per policy step at 50 Hz): the
 fraction of steps with both feet on the terrain (double support), exactly one (single support), or none (flight).
@@ -93,7 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
   p.add_argument(
     "--terrain",
     default="stepping_stones",
-    help="Terrain family of the AME training mix.",
+    help="Terrain family of the AME training mix, or stone_lattice (the gap task's lattice, gap = 0.45 * d).",
   )
   p.add_argument(
     "--num_envs",
@@ -180,6 +186,13 @@ def build_parser() -> argparse.ArgumentParser:
   p.add_argument("--proprio_noise", default="preset", choices=["preset", "on", "off"])
   # outcome rules
   p.add_argument("--success_dist", type=float, default=4.0)
+  p.add_argument(
+    "--success_rule",
+    default="forward",
+    choices=["forward", "any"],
+    help="forward: displacement along the spawn heading (the command direction) >= --success_dist. "
+    "any: xy displacement in any direction (the old rule).",
+  )
   p.add_argument("--tilt_deg", type=float, default=60.0)
   p.add_argument(
     "--fall_height",
@@ -261,6 +274,17 @@ def rate(k: int, n: int) -> dict:
   p = k / n if n > 0 else float("nan")
   se = math.sqrt(p * (1.0 - p) / n) if n > 0 else float("nan")
   return {"count": k, "rate": p, "se": se}
+
+
+def success_progress(disp, heading, rule: str):
+  """Per env: (forward, xy distance, the distance the success rule compares with --success_dist). ``disp`` is the
+  (N, 2) xy displacement from spawn, ``heading`` the (N,) spawn yaw; forward = ``disp`` along the spawn heading."""
+  import torch
+
+  fwd_dir = torch.stack((torch.cos(heading), torch.sin(heading)), dim=-1)
+  forward = (disp * fwd_dir).sum(dim=-1)
+  xy_dist = torch.linalg.norm(disp, dim=-1)
+  return forward, xy_dist, forward if rule == "forward" else xy_dist
 
 
 def host_max_rss_mb() -> float:
@@ -399,7 +423,11 @@ def main():
   contact_body = torch.full((num_envs,), -1, dtype=torch.long, device=device)
   contact_partner = [""] * num_envs  # "terrain" / "self:<link>", deepest first
   time_to_success = torch.full((num_envs,), float("nan"), device=device)
+  spawn_heading = (
+    robot.data.heading_w.clone()
+  )  # the command direction at spawn (vx in the base frame)
   max_forward = torch.zeros(num_envs, device=device)
+  forward_end = torch.zeros(num_envs, device=device)
   max_xy_disp = torch.zeros(num_envs, device=device)
   err_sum = torch.zeros(num_envs, device=device)
   height_sum = torch.zeros(num_envs, device=device)
@@ -441,6 +469,8 @@ def main():
     "model_name": args.model_name,
     "terrain": args.terrain,
     "seed": args.seed,
+    "success_rule": args.success_rule,
+    "success_dist": args.success_dist,
     "num_envs": num_envs,
     "tiles_total": tiles_total,
     "height_noise": height_noise,
@@ -541,9 +571,12 @@ def main():
       pre_reset = getattr(base_env, PRE_RESET_POS_ATTR, pos)
       pos_eff = torch.where(ended[:, None], pre_reset, pos)
       disp = pos_eff[:, :2] - spawn_pos[:, :2]
-      xy_dist = torch.linalg.norm(disp, dim=-1)
+      forward, xy_dist, progress = success_progress(
+        disp, spawn_heading, args.success_rule
+      )
       ok = active & torch.isfinite(xy_dist)
-      max_forward = torch.where(ok, torch.maximum(max_forward, disp[:, 0]), max_forward)
+      max_forward = torch.where(ok, torch.maximum(max_forward, forward), max_forward)
+      forward_end = torch.where(ok, forward, forward_end)
       max_xy_disp = torch.where(ok, torch.maximum(max_xy_disp, xy_dist), max_xy_disp)
       active &= ~ended
 
@@ -598,7 +631,7 @@ def main():
         spawn_check["problem"] = "; ".join(problems) or None
 
       # success first, then falls (falls must persist for hold_steps)
-      succeeded = active & (xy_dist >= args.success_dist)
+      succeeded = active & (progress >= args.success_dist)
       outcome[succeeded] = SUCCESS
       time_to_success[succeeded] = step * dt
       active &= ~succeeded
@@ -679,6 +712,7 @@ def main():
         "fail_time_s": float(fail_time[i]),
         "time_to_success_s": float(time_to_success[i]),
         "max_forward_m": float(max_forward[i]),
+        "forward_at_end_m": float(forward_end[i]),
         "max_xy_disp_m": float(max_xy_disp[i]),
         "mean_abs_vx_err": float(mean_err[i]) if survivor else float("nan"),
         "tracked_steps": tracked_c[i],
@@ -750,6 +784,8 @@ def main():
     },
     "mean_time_to_success_s": mean(succ_times),
     "mean_max_forward_m": mean([r["max_forward_m"] for r in rows]),
+    "mean_forward_at_end_m": mean([r["forward_at_end_m"] for r in rows]),
+    "mean_max_xy_disp_m": mean([r["max_xy_disp_m"] for r in rows]),
     "mean_abs_vx_err_survivors": mean(surv_errs),
     "n_survivors": len(surv_errs),
     "median_height_above_support_m": heights[len(heights) // 2]

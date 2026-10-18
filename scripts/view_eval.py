@@ -9,6 +9,9 @@ Examples:
         --terrain stepping_stones --difficulty 0.0 --noise off
     uv run python scripts/view_eval.py --checkpoint checkpoints/baseline/model_9999.pt \
         --terrain stepping_stones --difficulty 0.0 --noise off --video --video_s 3
+    uv run python scripts/view_eval.py --checkpoint checkpoints/shuang_gap2048/model_14999.pt \
+        --terrain stone_lattice --difficulty 0.5 --noise off --video --out_dir logs/eval_videos/shuang_gap2048
+        # the gap task's lattice (gap = 0.45 * d); spawn on the stone nearest the tile centre
 """
 
 import argparse
@@ -25,7 +28,11 @@ def main():
   p = argparse.ArgumentParser(description="Watch one robot on one evaluation tile.")
   p.add_argument("--task", default="Ame-Velocity-Rough-G1")
   p.add_argument("--checkpoint", required=True)
-  p.add_argument("--terrain", default="stepping_stones")
+  p.add_argument(
+    "--terrain",
+    default="stepping_stones",
+    help="As in evaluate.py: a family of the AME mix, or stone_lattice.",
+  )
   p.add_argument("--difficulty", type=float, default=0.0)
   p.add_argument("--seed", type=int, default=0)
   p.add_argument("--noise", default="off", choices=["train", "off"])

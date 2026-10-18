@@ -352,3 +352,72 @@ def test_cli_noise_resolution_and_tags() -> None:
     parse("--noise", "off", "--map_delay_steps", "5", "--proprio_noise", "on")
   )
   assert ev.noise_tag(h, p) == "h0-o0-dc0-d5-p1"
+
+
+def test_success_counts_only_progress_along_the_spawn_heading() -> None:
+  ev = _load_evaluate_script()
+  assert ev.build_parser().parse_args(["--random_policy"]).success_rule == "forward"
+  # forward 4 m, sideways 4 m, backward 4 m, diagonal (2.83 m forward) at yaw 0; then forward at yaw 90 deg
+  disp = torch.tensor([[4.0, 0.0], [0.0, 4.0], [-4.0, 0.0], [2.83, 2.83], [0.0, 4.0]])
+  heading = torch.tensor([0.0, 0.0, 0.0, 0.0, torch.pi / 2])
+  forward, xy, progress = ev.success_progress(disp, heading, "forward")
+  assert torch.allclose(forward, torch.tensor([4.0, 0.0, -4.0, 2.83, 4.0]), atol=1e-5)
+  assert torch.equal(progress, forward)
+  assert ((progress >= 4.0) == torch.tensor([True, False, False, False, True])).all()
+  _, _, any_dir = ev.success_progress(disp, heading, "any")
+  assert torch.equal(any_dir, xy) and (any_dir[:3] >= 4.0).all()
+
+
+@pytest.mark.parametrize("difficulty", [0.0, 0.25, 0.5, 0.75, 1.0])
+def test_stone_lattice_is_the_gap_board_lattice_with_a_stone_spawn(
+  difficulty: float,
+) -> None:
+  import mujoco
+  import numpy as np
+
+  from ame.eval import EVAL_TERRAINS, eval_env_cfg
+  from ame.eval.terrains import EvalStoneLatticeTerrainCfg
+  from ame.terrains import TILE, gap_board_cfg
+
+  assert "stone_lattice" in EVAL_TERRAINS and "stepping_stones" in EVAL_TERRAINS
+  cfg = eval_env_cfg(
+    terrain="stone_lattice", num_rows=2, num_cols=2, difficulty=difficulty
+  )
+  gen = cfg.scene.terrain.terrain_generator
+  assert list(gen.sub_terrains) == ["stone_lattice"]
+  assert gen.difficulty_range == (difficulty, difficulty)
+  fam = gen.sub_terrains["stone_lattice"]
+  assert isinstance(fam, EvalStoneLatticeTerrainCfg) and fam.flat_patch_sampling is None
+  train = gap_board_cfg().sub_terrains["stepping_stones"]
+  assert (fam.stone_size, fam.gap_range, fam.size, fam.floor_depth) == (
+    train.stone_size,
+    train.gap_range,
+    train.size,
+    train.floor_depth,
+  )
+  assert fam.gap(difficulty) == pytest.approx(0.45 * difficulty)
+  assert fam.size == TILE and fam.stone_size == 0.40
+
+  spec = mujoco.MjSpec()
+  spec.worldbody.add_body(name="terrain")
+  out = fam.function(difficulty, spec, np.random.default_rng(0))
+  grid, _ = fam.centres(difficulty)
+  # the origin is a stone centre (top at z = 0), the nearest one to the tile centre
+  assert out.origin[2] == 0.0
+  assert np.isclose(np.linalg.norm(grid - out.origin[:2], axis=1), 0.0).any()
+  centre = np.asarray(TILE) / 2
+  nearest = np.linalg.norm(grid - centre, axis=1).min()
+  assert np.linalg.norm(out.origin[:2] - centre) == pytest.approx(nearest)
+  if difficulty == 0.5:  # odd stone count: a stone right at the centre
+    assert np.allclose(out.origin[:2], centre)
+
+
+def test_stepping_stones_eval_terrain_is_unchanged() -> None:
+  from ame.eval import eval_env_cfg
+  from ame.terrains import ame_terrains_cfg
+
+  gen = eval_env_cfg(terrain="stepping_stones", num_rows=1, num_cols=1).scene.terrain
+  fam = gen.terrain_generator.sub_terrains["stepping_stones"]
+  ref = ame_terrains_cfg().sub_terrains["stepping_stones"]
+  assert type(fam) is type(ref)
+  assert {**vars(fam), "proportion": 0} == {**vars(ref), "proportion": 0}

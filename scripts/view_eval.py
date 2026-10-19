@@ -38,6 +38,12 @@ def main():
   p.add_argument("--noise", default="off", choices=["train", "off"])
   p.add_argument("--episode_s", type=float, default=20.0)
   p.add_argument(
+    "--commands",
+    default="fixed",
+    choices=["fixed", "train"],
+    help="As in evaluate.py: fixed vx = 1 m/s, or the gap task's random training twist commands.",
+  )
+  p.add_argument(
     "--spawn_asym",
     type=float,
     nargs="?",
@@ -100,6 +106,7 @@ def main():
     proprio_noise=proprio,
     spawn_asym=args.spawn_asym,
     actor_obs=args.actor_obs,
+    commands=args.commands,
   )
   env_cfg.scene.num_envs = 1
   env_cfg.viewer.width = args.video_width
@@ -115,6 +122,8 @@ def main():
     tag = f"{args.terrain}_d{args.difficulty:g}_{args.noise}"
     if args.spawn_asym:
       tag += f"_asym{args.spawn_asym:g}"
+    if args.commands != "fixed":
+      tag += f"_cmd{args.commands}"
     env = VideoRecorder(
       base_env,
       video_folder=os.path.join(args.out_dir, tag),

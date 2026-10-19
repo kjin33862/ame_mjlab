@@ -646,12 +646,15 @@ def main():
 
       # curriculum audit, first episode: terminal position for envs whose episode ends now; speeds and yaw only
       # from envs still in it (an ended env's velocity and heading are already the reset state's)
+      # (its own pre-reset position: an env the outcome rules already stopped tracking is not in `ended`)
       ep_end = alive & (base_env.reset_terminated | time_out)
-      ep_ok = alive & torch.isfinite(xy_dist)
-      ep_max_xy = torch.where(ep_ok, torch.maximum(ep_max_xy, xy_dist), ep_max_xy)
-      rise = pos_eff[:, 2] - spawn_pos[:, 2]
+      pos_ep = torch.where(ep_end[:, None], pre_reset, pos)
+      ep_xy = torch.linalg.norm(pos_ep[:, :2] - spawn_pos[:, :2], dim=-1)
+      ep_ok = alive & torch.isfinite(ep_xy)
+      ep_max_xy = torch.where(ep_ok, torch.maximum(ep_max_xy, ep_xy), ep_max_xy)
+      rise = pos_ep[:, 2] - spawn_pos[:, 2]
       ep_max_rise = torch.where(ep_ok, torch.maximum(ep_max_rise, rise), ep_max_rise)
-      ep_dist = torch.where(ep_end, xy_dist, ep_dist)
+      ep_dist = torch.where(ep_end, ep_xy, ep_dist)
       ep_timed_out |= ep_end & time_out
       ep_len = torch.where(ep_end, step, ep_len)
       running = alive & ~ep_end
@@ -750,7 +753,7 @@ def main():
     args.curriculum_audit
   ):  # an episode cut by --max_steps counts as ending there, not timed out
     ep_len = torch.where(alive, step, ep_len)
-    ep_dist = torch.where(alive, xy_dist, ep_dist)
+    ep_dist = torch.where(alive, ep_xy, ep_dist)
     decision = (
       curriculum_decision(
         ep_dist,

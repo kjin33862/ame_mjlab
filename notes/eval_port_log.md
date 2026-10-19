@@ -495,3 +495,113 @@ Progress: `tail logs/eval_results/matrix_gap_1024.log`.
 
 Extra videos (Shuang, 8 s): `logs/eval_videos/shuang_gap2048/{pyramid_stairs_inv_d0.5_off,wave_d0_off}/`.
 Korean summary for the user: `notes/overnight_summary_ko.md`. Finished 04:55; nothing left running.
+
+## 2026-10-18 (evening) — Stairs curriculum audit: does the gap curriculum promote circling in the pit?
+
+Unattended. Hypothesis: the gap task's `terrain_levels_floor` rule `tracking` (promote on a 20 s time-out if
+sum|v_xy| >= 0.6 x sum|cmd_xy|, direction not used) promoted Shuang's policy on pyramid_stairs_inv while it circled
+on the pit floor instead of climbing.
+
+### 1. Shuang's training log (`checkpoints/shuang_gap2048/events.out.tfevents.*`, `Curriculum/terrain_levels/*`)
+
+| iter | pyramid_stairs_inv | pyramid_stairs | stepping_stones | mean | max |
+|---|---|---|---|---|---|
+| 0 | 0.89 | 1.01 | 0.99 | 0.98 | 2.74 |
+| 1000 | 0.85 | 1.34 | 0.88 | 0.93 | 5.00 |
+| 2000 | 6.21 | 6.01 | 1.26 | 4.08 | 9.00 |
+| 3000 | 5.89 | 5.93 | 1.82 | 4.26 | 9.00 |
+| 4000 | 6.23 | 6.04 | 2.32 | 4.57 | 9.00 |
+| 5000 | 6.11 | 6.07 | 2.80 | 4.71 | 9.00 |
+| 6000 | 5.96 | 5.86 | 2.70 | 4.59 | 9.00 |
+| 7000 | 6.34 | 6.14 | 2.93 | 4.83 | 9.00 |
+| 8000 | 6.06 | 5.96 | 2.98 | 4.80 | 9.00 |
+| 9000 | 5.96 | 6.06 | 3.14 | 4.82 | 9.00 |
+| 10000 | 6.23 | 6.00 | 3.24 | 4.92 | 9.00 |
+| 11000 | 6.17 | 6.07 | 3.56 | 5.04 | 9.00 |
+| 12000 | 5.90 | 5.80 | 3.61 | 4.97 | 9.00 |
+| 13000 | 5.79 | 5.88 | 3.72 | 5.04 | 9.00 |
+| 14000 | 6.01 | 5.82 | 3.74 | 5.02 | 9.00 |
+| 14999 | 6.03 | 6.08 | 3.76 | 5.11 | 9.00 |
+
+Between 1000 and 2000 (every 100 iters) the inverted-stairs level rises steadily 0.85 -> 1.75 -> 2.42 -> 3.13 ->
+3.96 -> 4.41 -> 4.72 -> 5.07 -> 5.28 -> 5.64 -> 6.21, pyramid_stairs a bit faster (6.5 at 1400). Rows are d = row/9,
+so level ~6 = d ≈ 0.67 = 0.15 m steps (step height 0.05 + 0.15 d). At 14999 `Episode_Metrics/pelvis_speed` 0.60,
+`command_speed` 0.67, `pelvis_yaw_error` 1.04 rad/s (all terrains pooled).
+**Fact:** the inverted-stairs level sat at ~6 of 9 for 13,000 iterations, the same as the normal pyramid.
+In the overnight eval the same checkpoint climbs out of the pit 0-4 % of the time even at d = 0 (5 cm steps).
+
+### 2. Eval-only curriculum audit (`src/ame/eval/audit.py`, `scripts/evaluate.py --curriculum_audit`)
+
+- With `--curriculum_audit` every env is followed to the real end of its FIRST episode (time-out or termination),
+  even after the eval's own success / fall rule fired (so runs always last the full episode). Per env:
+  `curriculum_decision` (`promote_distance` = end > half tile from spawn; `promote_speed_only` = timed out and
+  sum|v_xy| >= 0.6 sum|cmd_xy| but not far; `demote` = terminated in the first half, or timed out too slow;
+  `none`), `speed_ratio`, `end_dist_m`, `max_xy_episode_m`, `escaped_pit` (max_xy_episode_m >= `--escape_dist`
+  3.0 m), `max_rise_m` (base z above spawn), `heading_change_deg` (final - initial yaw, wrapped),
+  `total_turn_deg` (accumulated signed yaw), `episode_timed_out`, `episode_steps`; `summary.json` gets
+  `curriculum_audit` counts. Same formulas as `terrain_levels_floor` (floor row ignored). |v_xy| is the world
+  planar speed (= the yaw-frame planar speed of `pelvis_speed`).
+- `--commands train` (eval-only, `eval_env_cfg(commands="train")`): copies the gap task's twist command config
+  (vx -0.3..1.5, vy ±0.5, wz ±1, body frame, no heading, resampled every 3-8 s, 5 % standing, 20 % forward-only).
+  Run folders get `_cmdtrain`. `view_eval.py --commands train` too.
+- **Choices:** `escaped_pit` uses the user's 3 m (the rim is 3.0 m from the centre along an axis: 1.5 m half
+  platform + 5 x 0.30 m steps; along a diagonal the rim is ~4.2 m, so 3 m there is still inside: `max_rise_m` is
+  recorded as a cross-check). The spawn stays yaw 0 at the pit centre (training: one of 4 lattice yaws).
+- Tests: decision table (far / speed-only / too slow / early fall / late fall / standing), `wrap_angle`, train
+  commands equal the gap task's, CLI defaults. `uv run pytest`: 79 passed, 1 skipped. Commit `3abfe39`.
+- **Bug found and fixed (`f41a30c`):** the first 60 runs (tags `sa-*`, 16:57-17:22, kept on disk) read the end
+  position of envs the outcome rules had already stopped tracking (success or eval fall) AFTER the auto-reset, i.e.
+  at the spawn: `end_dist_m` = 0, so successes were labelled `promote_speed_only` instead of `promote_distance`.
+  Seen on the baseline (95 % "speed-only" while 100 % had escaped). Fixed to use the pre-reset position whenever
+  the audit's own episode ends; rerun as `sb-*` (aggregator reads only `sb-*`). Shuang's fixed-command runs at
+  d >= 0.25 had no successes, so they were not affected.
+
+### 3. Results (tags `sb-*`, 60/60 valid, 17:24-17:50, one run at a time)
+
+`scripts/run_stairs_audit.sh` (restart-safe), `scripts/aggregate_stairs_audit.py` ->
+`logs/eval_results/stairs_audit/stairs_audit.csv`. pyramid_stairs_inv, 192 robots per row, noise off, spawn at the
+pit centre with yaw 0. "fixed" = vx 1 m/s; "train" = the gap task's random commands. escaped = max xy >= 3 m.
+
+| model | commands | d | n | success | escaped_pit | promote speed-only | speed-only & not escaped | demote | mean abs heading change deg | mean abs total turn deg | mean speed ratio | mean max rise m |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | fixed | 0 | 192 | 1.00 | 1.00 | 0.00 | 0.00 | 0.00 | 66 | 66 | 0.92 | 0.29 |
+| baseline | fixed | 0.25 | 192 | 1.00 | 1.00 | 0.00 | 0.00 | 0.00 | 62 | 63 | 0.87 | 0.52 |
+| baseline | fixed | 0.5 | 192 | 0.92 | 0.93 | 0.00 | 0.00 | 0.07 | 59 | 59 | 0.84 | 0.73 |
+| baseline | fixed | 0.75 | 192 | 0.26 | 0.28 | 0.00 | 0.00 | 0.74 | 19 | 19 | 0.78 | 0.56 |
+| baseline | fixed | 1 | 192 | 0.02 | 0.02 | 0.00 | 0.00 | 0.98 | 10 | 10 | 0.73 | 0.25 |
+| baseline | train | 0 | 192 | 0.36 | 0.86 | 0.26 | 0.09 | 0.04 | 94 | 242 | 0.82 | 0.26 |
+| baseline | train | 0.25 | 192 | 0.31 | 0.79 | 0.27 | 0.12 | 0.08 | 87 | 231 | 0.78 | 0.44 |
+| baseline | train | 0.5 | 192 | 0.26 | 0.69 | 0.27 | 0.14 | 0.19 | 87 | 224 | 0.76 | 0.55 |
+| baseline | train | 0.75 | 192 | 0.02 | 0.12 | 0.06 | 0.04 | 0.73 | 70 | 131 | 0.68 | 0.24 |
+| baseline | train | 1 | 192 | 0.00 | 0.00 | 0.02 | 0.02 | 0.79 | 66 | 120 | 0.64 | 0.07 |
+| shuang_gap2048 | fixed | 0 | 192 | 0.03 | 0.44 | 0.64 | 0.56 | 0.00 | 107 | 458 | 0.99 | 0.19 |
+| shuang_gap2048 | fixed | 0.25 | 192 | 0.00 | 0.00 | 0.91 | 0.91 | 0.08 | 116 | 798 | 0.95 | 0.03 |
+| shuang_gap2048 | fixed | 0.5 | 192 | 0.00 | 0.00 | 0.99 | 0.99 | 0.01 | 149 | 926 | 0.94 | 0.00 |
+| shuang_gap2048 | fixed | 0.75 | 192 | 0.00 | 0.00 | 1.00 | 1.00 | 0.00 | 93 | 987 | 0.94 | 0.00 |
+| shuang_gap2048 | fixed | 1 | 192 | 0.00 | 0.00 | 1.00 | 1.00 | 0.00 | 80 | 1000 | 0.93 | 0.00 |
+| shuang_gap2048 | train | 0 | 192 | 0.33 | 0.67 | 0.36 | 0.29 | 0.04 | 86 | 214 | 0.92 | 0.20 |
+| shuang_gap2048 | train | 0.25 | 192 | 0.09 | 0.17 | 0.60 | 0.57 | 0.16 | 90 | 346 | 0.86 | 0.12 |
+| shuang_gap2048 | train | 0.5 | 192 | 0.01 | 0.03 | 0.71 | 0.70 | 0.16 | 84 | 412 | 0.83 | 0.05 |
+| shuang_gap2048 | train | 0.75 | 192 | 0.00 | 0.01 | 0.74 | 0.74 | 0.15 | 91 | 405 | 0.81 | 0.02 |
+| shuang_gap2048 | train | 1 | 192 | 0.00 | 0.00 | 0.82 | 0.82 | 0.12 | 88 | 443 | 0.81 | 0.00 |
+
+Total promotion (distance + speed-only) vs demotion, Shuang: fixed 0.91-1.00 vs 0-0.07; train 0.72-0.94 vs
+0.04-0.16 (d 0.25-1.0: speed-only 0.60-0.82 of which 0.57-0.82 did not escape). Baseline fixed: all promotions by
+distance; baseline train: speed-only-not-escaped 0.02-0.14.
+
+**Supports the hypothesis (measured):** at d >= 0.25 Shuang escapes 0-17 % (fixed: 0 %) but 72-100 % of its episodes
+would be promoted by the gap rule, almost all "speed only"; under the fixed command it turns 800-1000 deg per episode
+(2-3 full circles) with speed ratio 0.93-0.99 and almost never terminates. Promotion >> demotion at every d, consistent
+with the training log's inverted-stairs level ~6 although the policy cannot climb 5 cm steps here.
+**Not shown / limits:** causality (needs a retrain with a direction-aware rule); the loophole also exists for the
+baseline under random commands (2-14 %); the eval env keeps the AME illegal-contact termination (absent in his task:
+demotions here are likely an over-estimate), yaw 0 only, no noise or pushes, deterministic actions; why the training
+level stopped at ~6 instead of 9 is unexplained.
+
+### 4. Video
+`logs/eval_videos/shuang_gap2048/pyramid_stairs_inv_d0.5_off_cmdtrain/rl-video-step-0.mp4` (6 s, train commands,
+seed 0): stays on the pit floor for 6 s (4 frames checked; the commands it got are not visible in the video).
+
+### 5-6. Notes
+`notes/sgs_notes_ko.md` (SGS, arXiv 2610.12465 + AlphaNIST 2610.13354 SGS part; code not released, locomotion
+"command-success" undefined in the paper) and `notes/stairs_audit_ko.md` (results in Korean). Finished 17:55.

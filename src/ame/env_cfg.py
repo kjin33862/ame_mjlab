@@ -35,6 +35,7 @@ from ame.mdp.curriculums import terrain_levels_floor
 from ame.mdp.events import LATTICE_YAWS, SPAWN_POSE, reset_root_state_on_patches
 from ame.mdp.metrics import (
   command_speed,
+  pelvis_progress,
   pelvis_speed,
   pelvis_vel_error,
   pelvis_yaw_error,
@@ -167,7 +168,8 @@ def apply_terrain_floor(
 
 
 def add_tracking_metrics(cfg: Any, command_name: str = "twist") -> None:
-  """Log pelvis tracking error, speed and commanded speed as episode means."""
+  """Log pelvis tracking error, speed, progress along the command and
+  commanded speed as episode means."""
   cfg.metrics["pelvis_vel_error"] = MetricsTermCfg(
     func=pelvis_vel_error, params={"command_name": command_name}
   )
@@ -175,6 +177,9 @@ def add_tracking_metrics(cfg: Any, command_name: str = "twist") -> None:
     func=pelvis_yaw_error, params={"command_name": command_name}
   )
   cfg.metrics["pelvis_speed"] = MetricsTermCfg(func=pelvis_speed)
+  cfg.metrics["pelvis_progress"] = MetricsTermCfg(
+    func=pelvis_progress, params={"command_name": command_name}
+  )
   cfg.metrics["command_speed"] = MetricsTermCfg(
     func=command_speed, params={"command_name": command_name}
   )
@@ -225,20 +230,24 @@ def ame_stage_env_cfg(stage: int, play: bool = False) -> ManagerBasedRlEnvCfg:
   return cfg
 
 
-def ame_gap_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+def ame_gap_env_cfg(
+  play: bool = False, rule: str = GAP_CURRICULUM["rule"]
+) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
   Uniform 0.40 m stones whose gap is the difficulty (row 0 is a floor),
   on-stone spawns with a lattice-aligned heading, the tracking-gated
   curriculum, mjlab's reward set and domain randomisation, and the deployment
-  observation set in the actor (no ``base_lin_vel``)."""
+  observation set in the actor (no ``base_lin_vel``).  ``rule`` overrides
+  the curriculum's promotion rule (``"progress"`` for the direction-aware
+  one)."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   apply_terrain(cfg, gap_board_cfg(), play)
   apply_deploy_observations(cfg)
   apply_patch_spawn(cfg)
   add_tracking_metrics(cfg)
   if not play:
-    apply_terrain_floor(cfg, command_name="twist", **GAP_CURRICULUM)
+    apply_terrain_floor(cfg, command_name="twist", **{**GAP_CURRICULUM, "rule": rule})
   return cfg
 
 

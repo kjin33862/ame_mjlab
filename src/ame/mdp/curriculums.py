@@ -34,6 +34,9 @@ class terrain_levels_floor:
   ``track_ratio`` of the mean commanded speed (the ``pelvis_speed`` and
   ``command_speed`` metrics), and demotes if it did not — a robot that
   survives by stalling on one stone is sent back down, not up.
+  ``rule="progress"`` is tracking with ``pelvis_progress`` (velocity along
+  the command) in place of ``pelvis_speed``: speed ignores direction, so a
+  robot circling in a pit still promotes under tracking.
   ``hold_steps``: no level changes before this env step, so a frozen actor
   (a critic warm-up) cannot be promoted onto terrain the learning policy
   has never met.
@@ -44,9 +47,9 @@ class terrain_levels_floor:
     self.rule = str(cfg.params.get("rule", "endpoint"))
     self.track_ratio = float(cfg.params.get("track_ratio", 0.6))
     self.hold_steps = int(cfg.params.get("hold_steps", 0))
-    if self.rule not in ("endpoint", "survival", "tracking"):
+    if self.rule not in ("endpoint", "survival", "tracking", "progress"):
       raise ValueError(
-        f"rule must be endpoint, survival or tracking, got {self.rule!r}"
+        f"rule must be endpoint, survival, tracking or progress, got {self.rule!r}"
       )
     terrain = env.scene.terrain
     assert terrain is not None and terrain.terrain_origins is not None
@@ -94,20 +97,21 @@ class terrain_levels_floor:
     )
     above_floor = terrain.terrain_levels[env_ids] > self.floor
     move_up = distance > generator.size[0] / 2
-    if self.rule in ("survival", "tracking"):
+    if self.rule in ("survival", "tracking", "progress"):
       timed_out = env.termination_manager.time_outs[env_ids]
       length = env.episode_length_buf[env_ids].float()
       early = ~timed_out & (length < 0.5 * float(env.max_episode_length))
-      if self.rule == "tracking":
+      if self.rule in ("tracking", "progress"):
         # The metrics manager resets after the curriculum runs, so the
         # episode's sums are still whole here.
         metrics: Any = env.metrics_manager
-        for name in ("pelvis_speed", "command_speed"):
+        moved_name = "pelvis_speed" if self.rule == "tracking" else "pelvis_progress"
+        for name in (moved_name, "command_speed"):
           if name not in metrics.active_terms:
             raise ValueError(
-              f"rule='tracking' needs the {name} metric (add_tracking_metrics)"
+              f"rule={self.rule!r} needs the {name} metric (add_tracking_metrics)"
             )
-        moved = metrics._episode_sums["pelvis_speed"][env_ids]
+        moved = metrics._episode_sums[moved_name][env_ids]
         asked = metrics._episode_sums["command_speed"][env_ids]
         # A standing command asks for nothing; surviving it counts as tracked.
         tracked = moved >= self.track_ratio * asked

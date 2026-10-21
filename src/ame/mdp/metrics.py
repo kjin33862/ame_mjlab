@@ -44,6 +44,20 @@ def pelvis_speed(env: ManagerBasedRlEnv) -> torch.Tensor:
   return torch.norm(_pelvis_vel_yaw(env)[:, :2], dim=1)
 
 
+def pelvis_progress(
+  env: ManagerBasedRlEnv, command_name: str = "twist"
+) -> torch.Tensor:
+  """Pelvis velocity along the commanded direction, ``v_xy · cmd_xy / |cmd_xy|``,
+  m/s — circling or walking backwards earns nothing or less.  Zero under a
+  standing command, where ``command_speed`` is zero too."""
+  command = env.command_manager.get_command(command_name)
+  assert command is not None
+  cmd = command[:, :2]
+  norm = torch.norm(cmd, dim=1)
+  along = (_pelvis_vel_yaw(env)[:, :2] * cmd).sum(dim=1) / norm.clamp(min=1e-6)
+  return torch.where(norm > 1e-6, along, torch.zeros_like(along))
+
+
 def command_speed(env: ManagerBasedRlEnv, command_name: str = "twist") -> torch.Tensor:
   """``|cmd_xy|`` per step; with ``pelvis_speed`` it gives an episode's
   progress ratio that holds under arcs, unlike the end-point displacement."""
@@ -54,6 +68,7 @@ def command_speed(env: ManagerBasedRlEnv, command_name: str = "twist") -> torch.
 
 __all__ = [
   "command_speed",
+  "pelvis_progress",
   "pelvis_speed",
   "pelvis_vel_error",
   "pelvis_yaw_error",

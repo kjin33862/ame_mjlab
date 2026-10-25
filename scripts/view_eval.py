@@ -12,6 +12,11 @@ Examples:
     uv run python scripts/view_eval.py --checkpoint checkpoints/shuang_gap2048/model_14999.pt \
         --terrain stone_lattice --difficulty 0.5 --noise off --video --out_dir logs/eval_videos/shuang_gap2048
         # the gap task's lattice (gap = 0.45 * d); spawn on the stone nearest the tile centre
+    uv run python scripts/view_eval.py --checkpoint checkpoints/gap_1024/model_9999.pt \
+        --terrain pyramid_stairs_inv --difficulty 0.25 --noise off --cmd_mode goal --video --video_s 8
+        # closed-loop wz toward a goal 10 m ahead (evaluate.py --cmd_mode goal), drawn as a red sphere
+
+Videos go to <out_dir>/<model_name>_<terrain>_d<d>_<noise>_<cmd_mode>[...]/ (model_name: as in evaluate.py).
 """
 
 import argparse
@@ -21,13 +26,25 @@ import sys
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from evaluate import resolve_noise  # noqa: E402
+from evaluate import (  # noqa: E402
+  goal_points,
+  install_goal_commands,
+  resolve_noise,
+)
+
+GOAL_RADIUS_M = 0.1
+GOAL_COLOR = (1.0, 0.2, 0.2, 0.9)
 
 
 def main():
   p = argparse.ArgumentParser(description="Watch one robot on one evaluation tile.")
   p.add_argument("--task", default="Ame-Velocity-Rough-G1")
   p.add_argument("--checkpoint", required=True)
+  p.add_argument(
+    "--model_name",
+    default=None,
+    help="Label in the video folder name. Default: <run dir>_<ckpt name>, as in evaluate.py.",
+  )
   p.add_argument(
     "--terrain",
     default="stepping_stones",
@@ -43,6 +60,14 @@ def main():
     choices=["fixed", "train"],
     help="As in evaluate.py: fixed vx = 1 m/s, or the gap task's random training twist commands.",
   )
+  p.add_argument(
+    "--cmd_mode",
+    default="open",
+    choices=["open", "goal"],
+    help="As in evaluate.py: open (fixed twist) or goal (closed-loop wz toward a goal point).",
+  )
+  p.add_argument("--goal_dist", type=float, default=10.0)
+  p.add_argument("--goal_k", type=float, default=1.0)
   p.add_argument(
     "--spawn_asym",
     type=float,
@@ -76,6 +101,8 @@ def main():
     p.add_argument(f"--{name}", type=int, default=None)
   p.add_argument("--proprio_noise", default="preset", choices=["preset", "on", "off"])
   args = p.parse_args()
+  if args.cmd_mode == "goal" and args.commands != "fixed":
+    p.error("--cmd_mode goal needs --commands fixed")
 
   from dataclasses import asdict
 
@@ -92,6 +119,9 @@ def main():
   configure_torch_backends()
   device = args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
   checkpoint = os.path.abspath(os.path.expanduser(args.checkpoint))
+  if args.model_name is None:
+    run_dir = os.path.basename(os.path.dirname(checkpoint))
+    args.model_name = f"{run_dir}_{os.path.splitext(os.path.basename(checkpoint))[0]}"
   height_noise, proprio = resolve_noise(args)
   if args.actor_obs == "auto":
     args.actor_obs = checkpoint_actor_obs(checkpoint)
@@ -119,7 +149,7 @@ def main():
   assign_tiles(base_env)
   env = base_env
   if args.video:
-    tag = f"{args.terrain}_d{args.difficulty:g}_{args.noise}"
+    tag = f"{args.model_name}_{args.terrain}_d{args.difficulty:g}_{args.noise}_{args.cmd_mode}"
     if args.spawn_asym:
       tag += f"_asym{args.spawn_asym:g}"
     if args.commands != "fixed":
@@ -132,6 +162,20 @@ def main():
       disable_logger=True,
     )
   env = RslRlVecEnvWrapper(env, clip_actions=rl_cfg.clip_actions)
+  if args.cmd_mode == "goal":  # after the wrapper's reset: the spawn pose
+    robot = base_env.scene["robot"]
+    goal = goal_points(robot.data.root_link_pos_w, robot.data.heading_w, args.goal_dist)
+    install_goal_commands(base_env, goal, args.goal_k)
+    # the goal at spawn height, drawn by every viewer and the video renderer
+    goal_np = torch.cat((goal, robot.data.root_link_pos_w[:, 2:]), dim=-1).cpu().numpy()
+    update_visualizers = base_env.update_visualizers
+
+    def draw_goal(visualizer):
+      update_visualizers(visualizer)
+      for i in visualizer.get_env_indices(base_env.num_envs):
+        visualizer.add_sphere(goal_np[i], GOAL_RADIUS_M, GOAL_COLOR, label="goal")
+
+    base_env.update_visualizers = draw_goal
   runner = (load_runner_cls(args.task) or MjlabOnPolicyRunner)(
     env, asdict(rl_cfg), device=device
   )

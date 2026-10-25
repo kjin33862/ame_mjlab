@@ -7,6 +7,8 @@
 # Noise sweep: stone_lattice d = 0.5, seeds 0 1 2. Conditions: off, train (training map noise + proprio noise), and
 # one map parameter at a time from "off" (no proprio noise): height_sigma 0.06 0.10, height_offset 0.10 0.15,
 # drift_cells 1 2 3, map_delay_steps 5 10. Tags "nz-<cond>-s<seed>".
+# Goal (PARTS=goal, not in the default): pyramid_stairs_inv at DIFFS x SEEDS with --cmd_mode goal (closed-loop wz toward a
+# goal 10 m ahead), noise off. Tags "gm-pyramid_stairs_inv-d<d>-s<seed>"; aggregated by scripts/aggregate_goal.py.
 #
 # Every run: 8 x 8 tiles, one robot per tile, --model_name <name>. Restart-safe: a run whose folder already has a
 # summary.json with "valid": true and the same model_name is skipped. The whole list is gone through twice, so a run
@@ -84,6 +86,14 @@ all_runs() {
                     [ "$terrain" = flat ] && [ "$d" != 0.0 ] && continue
                     run "mx-${terrain}-d${d}-s${seed}" --terrain "$terrain" --difficulty "$d" --seed "$seed" --noise off
                 done
+            done
+        done
+    fi
+    if [[ " $PARTS " == *" goal "* ]]; then
+        for seed in $SEEDS; do
+            for d in $DIFFS; do
+                run "gm-pyramid_stairs_inv-d${d}-s${seed}" --terrain pyramid_stairs_inv --difficulty "$d" --seed "$seed" \
+                    --noise off --cmd_mode goal
             done
         done
     fi

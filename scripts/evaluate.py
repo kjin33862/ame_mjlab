@@ -24,6 +24,12 @@ none), the speed ratio sum|v_xy| / sum|cmd_xy|, max_xy_episode_m, escaped_pit (m
 yaw, wrapped) and total_turn_deg (accumulated signed yaw). --commands train replaces the fixed vx = 1 m/s with the gap
 task's random training twist commands.
 
+Goal mode (--cmd_mode goal): every env gets a goal point --goal_dist ahead of its spawn along the spawn heading, and
+every control step its wz is closed-loop: err = wrap_to_pi(bearing from the root link xy to the goal - root link yaw),
+wz = clip(--goal_k * err, -1, 1); vx = 1, vy = 0 stay as in open mode (the default, no feedback). The success rule is
+unchanged. In both modes per_env.csv gets max_abs_goal_err_deg (max |err| over the tracked steps) and
+goal_err_gt45_frac (fraction of tracked steps with |err| > 45 deg), and summary.json their means ("goal").
+
 Gait, per env over its tracked steps (feet_ground_contact sensor, sampled once per policy step at 50 Hz): the
 fraction of steps with both feet on the terrain (double support), exactly one (single support), or none (flight).
 
@@ -78,6 +84,8 @@ STEP1_DISP_TOL_M = 0.10
 STEP1_HEIGHT_RANGE_M = (0.5, 1.1)
 # speed check: a success faster than this mean speed is physically implausible (command 1 m/s)
 MAX_PLAUSIBLE_SPEED_MPS = 3.0
+GOAL_WZ_MAX = 1.0  # goal mode: |wz| clip [rad/s]
+GOAL_ERR_BIG_DEG = 45.0  # goal_err_gt45_frac threshold
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -201,6 +209,23 @@ def build_parser() -> argparse.ArgumentParser:
     help="fixed: vx = 1 m/s for every env. train: the gap task's random training twist commands.",
   )
   p.add_argument(
+    "--cmd_mode",
+    default="open",
+    choices=["open", "goal"],
+    help="open: the fixed body-frame twist as is. goal: wz steers the root link toward a goal point --goal_dist "
+    "ahead of the spawn (fixed commands only).",
+  )
+  p.add_argument(
+    "--goal_dist",
+    type=float,
+    default=10.0,
+    help="Goal point distance ahead of the spawn along the spawn heading [m] (the heading error is recorded in "
+    "both modes).",
+  )
+  p.add_argument(
+    "--goal_k", type=float, default=1.0, help="Goal mode: wz = clip(k * err, -1, 1)."
+  )
+  p.add_argument(
     "--curriculum_audit",
     action="store_true",
     help="Follow every env to the end of its first episode and record what the gap curriculum would decide.",
@@ -312,6 +337,40 @@ def success_progress(disp, heading, rule: str):
   return forward, xy_dist, forward if rule == "forward" else xy_dist
 
 
+def goal_points(pos, heading, dist: float):
+  """Per env: the xy point ``dist`` ahead of ``pos`` (N, 3) along ``heading`` (N,)."""
+  import torch
+
+  return pos[:, :2] + dist * torch.stack((torch.cos(heading), torch.sin(heading)), dim=-1)
+
+
+def goal_heading_error(pos, heading, goal):
+  """Per env: wrap_to_pi(bearing from the xy of ``pos`` to ``goal`` - ``heading``), world frame."""
+  import torch
+  from mjlab.utils.lab_api.math import wrap_to_pi
+
+  to_goal = goal - pos[:, :2]
+  return wrap_to_pi(torch.atan2(to_goal[:, 1], to_goal[:, 0]) - heading)
+
+
+def install_goal_commands(base_env, goal, k: float) -> None:
+  """Goal mode: after the twist term's own update (every step, before the observations), overwrite wz with
+  clip(k * err, -GOAL_WZ_MAX, GOAL_WZ_MAX) from the root link pose; vx and vy stay the fixed command."""
+  import torch
+
+  term = base_env.command_manager.get_term("twist")
+  robot = base_env.scene["robot"]
+  update = term._update_command
+
+  def goal_update():
+    update()
+    err = goal_heading_error(robot.data.root_link_pos_w, robot.data.heading_w, goal)
+    term.vel_command_b[:, 2] = torch.clip(k * err, -GOAL_WZ_MAX, GOAL_WZ_MAX)
+
+  term._update_command = goal_update
+  goal_update()  # the command in the first observation
+
+
 def audit_summary(rows: list[dict], escape_dist: float) -> dict:
   """Counts of the audit columns over envs (see the module docstring)."""
   n = len(rows)
@@ -337,7 +396,10 @@ def host_max_rss_mb() -> float:
 
 
 def main():
-  args = build_parser().parse_args()
+  parser = build_parser()
+  args = parser.parse_args()
+  if args.cmd_mode == "goal" and args.commands != "fixed":
+    parser.error("--cmd_mode goal needs --commands fixed")
   if args.num_envs is None:
     args.num_envs = args.num_rows * args.num_cols
 
@@ -478,6 +540,12 @@ def main():
   max_forward = torch.zeros(num_envs, device=device)
   forward_end = torch.zeros(num_envs, device=device)
   max_xy_disp = torch.zeros(num_envs, device=device)
+  goal = goal_points(spawn_pos, spawn_heading, args.goal_dist)
+  if args.cmd_mode == "goal":
+    install_goal_commands(base_env, goal, args.goal_k)
+  max_goal_err = torch.zeros(num_envs, device=device)
+  n_goal_err_big = torch.zeros(num_envs, dtype=torch.long, device=device)
+  goal_err_big = math.radians(GOAL_ERR_BIG_DEG)
   # curriculum audit: the first episode as the env runs it (not cut at success or a fall)
   alive = torch.ones(num_envs, dtype=torch.bool, device=device)
   ep_timed_out = torch.zeros(num_envs, dtype=torch.bool, device=device)
@@ -516,6 +584,8 @@ def main():
     run_name += "_stoch"
   if args.commands != "fixed":
     run_name += f"_cmd{args.commands}"
+  if args.cmd_mode != "open":
+    run_name += f"_{args.cmd_mode}"
   if args.tag:
     run_name += f"_{args.tag}"
   out_dir = os.path.join(os.path.expanduser(args.out_root), run_name)
@@ -539,6 +609,9 @@ def main():
     "proprio_noise": proprio,
     "stochastic_actions": args.stochastic_actions,
     "commands": args.commands,
+    "cmd_mode": args.cmd_mode,
+    "goal_dist": args.goal_dist,
+    "goal_k": args.goal_k if args.cmd_mode == "goal" else None,
     "curriculum_audit": args.curriculum_audit,
     "spawn_asym": args.spawn_asym,
     "tag": args.tag,
@@ -674,6 +747,11 @@ def main():
       vx_yaw = torch.cos(heading) * v_w[:, 0] + torch.sin(heading) * v_w[:, 1]
       cmd = base_env.command_manager.get_command("twist")
       err_sum += torch.where(active, (vx_yaw - cmd[:, 0]).abs(), 0.0)
+      goal_err = goal_heading_error(pos, heading, goal).abs()
+      max_goal_err = torch.where(
+        active, torch.maximum(max_goal_err, goal_err), max_goal_err
+      )
+      n_goal_err_big += (active & (goal_err > goal_err_big)).long()
 
       # base height above the supporting surface: highest ray hit within support_radius of the base
       hits = scan.data.hit_pos_w
@@ -799,6 +877,8 @@ def main():
     n_height > 0, height_sum / n_height.clamp(min=1), torch.nan
   ).cpu()
   gait_frac = (n_feet_down / n_tracked.clamp(min=1)[:, None]).cpu().tolist()
+  max_goal_err_deg = torch.rad2deg(max_goal_err).cpu().tolist()
+  goal_big_frac = (n_goal_err_big / n_tracked.clamp(min=1)).cpu().tolist()
   outcome_c, reason_c = outcome.cpu().tolist(), fail_reason.cpu().tolist()
   tracked_c, body_c, mask_c = (
     n_tracked.cpu().tolist(),
@@ -830,6 +910,8 @@ def main():
         "double_support_frac": gait_frac[i][2] if tracked_c[i] else float("nan"),
         "single_support_frac": gait_frac[i][1] if tracked_c[i] else float("nan"),
         "flight_frac": gait_frac[i][0] if tracked_c[i] else float("nan"),
+        "max_abs_goal_err_deg": max_goal_err_deg[i] if tracked_c[i] else float("nan"),
+        "goal_err_gt45_frac": goal_big_frac[i] if tracked_c[i] else float("nan"),
         "mean_height_above_support_m": float(mean_height[i]),
         "static_friction": float(friction[i]),
       }
@@ -907,6 +989,10 @@ def main():
     "gait_mean": {
       key: mean([r[f"{key}_frac"] for r in rows if r["tracked_steps"] > 0])
       for key in ("double_support", "single_support", "flight")
+    },
+    "goal": {
+      key: mean([r[key] for r in rows if r["tracked_steps"] > 0])
+      for key in ("max_abs_goal_err_deg", "goal_err_gt45_frac")
     },
     "mean_time_to_success_s": mean(succ_times),
     "mean_max_forward_m": mean([r["max_forward_m"] for r in rows]),

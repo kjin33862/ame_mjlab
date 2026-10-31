@@ -10,6 +10,8 @@ and domain randomisation, so the recipe layers only its own pieces:
 * ``apply_twist_commands`` — heading control off, the command is the twist
   ``(vx, vy, wz)`` with ``vy`` open, so a higher-level planner can steer the
   policy anywhere in the twist box;
+* ``apply_heading_commands`` — mjlab's heading control back on for 30 % of
+  commands, for tasks that want it;
 * ``apply_rewards`` — mjlab's stack, the AME-2 stack, or the rebalanced AME-2
   stack the registered tasks train on (:mod:`ame.reward_cfg`);
 * ``apply_patch_spawn`` / ``apply_terrain_floor`` / ``add_tracking_metrics`` —
@@ -22,6 +24,7 @@ below are the from-scratch tasks.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -90,6 +93,17 @@ def apply_twist_commands(cfg: Any) -> None:
     setattr(twist.ranges, axis, rng)
   twist.ranges.heading = None  # mjlab refuses a heading range with heading off
   cfg.curriculum.pop("command_vel", None)  # would overwrite the ranges mid-run
+
+
+def apply_heading_commands(cfg: Any) -> None:
+  """Turn heading control back on with mjlab's velocity-task defaults: 30 %
+  of commands steer ``wz`` to a world heading instead of a random yaw rate.
+  Apply after ``apply_twist_commands``."""
+  twist: Any = cfg.commands["twist"]
+  twist.heading_command = True
+  twist.rel_heading_envs = 0.3
+  twist.heading_control_stiffness = 0.5
+  twist.ranges.heading = (-math.pi, math.pi)
 
 
 def apply_deploy_observations(cfg: Any) -> None:
@@ -233,7 +247,7 @@ def ame_stage_env_cfg(stage: int, play: bool = False) -> ManagerBasedRlEnvCfg:
 def ame_gap_env_cfg(
   play: bool = False,
   rule: str = GAP_CURRICULUM["rule"],
-  rel_world_envs: float = 0.0,
+  heading_command: bool = False,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -242,12 +256,11 @@ def ame_gap_env_cfg(
   curriculum, mjlab's reward set and domain randomisation, and the deployment
   observation set in the actor (no ``base_lin_vel``).  ``rule`` overrides
   the curriculum's promotion rule (``"progress"`` for the direction-aware
-  one); ``rel_world_envs`` is the fraction of twist commands whose linear
-  velocity is fixed in the world frame and rotated into the body every
-  step."""
+  one); ``heading_command`` turns heading control on
+  (``apply_heading_commands``)."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
-  twist: Any = cfg.commands["twist"]
-  twist.rel_world_envs = rel_world_envs
+  if heading_command:
+    apply_heading_commands(cfg)
   apply_terrain(cfg, gap_board_cfg(), play)
   apply_deploy_observations(cfg)
   apply_patch_spawn(cfg)
@@ -268,6 +281,7 @@ __all__ = [
   "ame_rough_env_cfg",
   "ame_stage_env_cfg",
   "apply_deploy_observations",
+  "apply_heading_commands",
   "apply_patch_spawn",
   "apply_rewards",
   "apply_scan",

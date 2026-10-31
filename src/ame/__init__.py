@@ -14,9 +14,9 @@ reused on other tasks.  Importing the package (mjlab does it through the
   board under mjlab's G1 rewards, with the deployment actor observations;
 * ``Ame-Mjlab-Gap-Progress-Velocity-Rough-G1`` — the same task promoted on
   progress along the command instead of speed (``rule="progress"``);
-* ``Ame-Mjlab-Gap-ProgressWorld-Velocity-Rough-G1`` — the progress task with
-  half the commands' linear velocity fixed in the world frame
-  (``rel_world_envs=0.5``).
+* ``Ame-Mjlab-Gap-ProgressHeading-Velocity-Rough-G1`` — the progress task
+  with mjlab's heading commands back on (30 % of commands steer to a world
+  heading).
 
 Train / play with mjlab's own CLIs::
 
@@ -68,8 +68,8 @@ register_mjlab_task(
 )
 
 register_mjlab_task(
-  task_id="Ame-Mjlab-Gap-ProgressWorld-Velocity-Rough-G1",
-  env_cfg=ame_gap_env_cfg(rule="progress", rel_world_envs=0.5),
-  play_env_cfg=ame_gap_env_cfg(play=True, rule="progress", rel_world_envs=0.5),
+  task_id="Ame-Mjlab-Gap-ProgressHeading-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(rule="progress", heading_command=True),
+  play_env_cfg=ame_gap_env_cfg(play=True, rule="progress", heading_command=True),
   rl_cfg=ame_symmetric_ppo_runner_cfg(),
 )

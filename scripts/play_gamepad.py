@@ -12,13 +12,17 @@ joystick sliders use), so the policy observes it and the command arrows show it.
     B                      switch between the gamepad and the task's random commands
 
 Each axis is scaled to the task's command range (stick fully up = the range's max, fully down = its min), with
-a dead zone.  The gamepad is read from the Linux joystick API (/dev/input/js*), no extra packages.
+a dead zone.  --max-vx, --min-vx, --max-vy and --max-wz replace the ends of those ranges (vy and wz stay
+symmetric); a value outside the training range is allowed with a warning, as the policy never saw it.  The
+gamepad is read from the Linux joystick API (/dev/input/js*), no extra packages.
 
 Examples:
     uv run python scripts/play_gamepad.py --task Ame-Mjlab-Gap-Velocity-Rough-G1 \
         --checkpoint-file checkpoints/gap_1024/model_9999.pt
     uv run python scripts/play_gamepad.py --task Ame-Mjlab-Gap-Velocity-Rough-G1 \
         --checkpoint-file checkpoints/gap_1024/model_9999.pt --terrain pyramid_stairs_inv --difficulty 0.25
+    uv run python scripts/play_gamepad.py --task Ame-Mjlab-Gap-Velocity-Rough-G1 \
+        --checkpoint-file checkpoints/gap_1024/model_9999.pt --max-wz 2.0  # beyond training: a warning
 """
 
 import argparse
@@ -30,6 +34,7 @@ import os
 import struct
 import threading
 import time
+from typing import Any
 
 # linux/joystick.h
 JS_EVENT_BUTTON = 0x01
@@ -125,6 +130,33 @@ def _to_range(value: float, rng: tuple[float, float]) -> float:
   return value * rng[1] if value >= 0 else -value * rng[0]
 
 
+def gamepad_ranges(
+  train: Any,
+  max_vx: float | None = None,
+  min_vx: float | None = None,
+  max_vy: float | None = None,
+  max_wz: float | None = None,
+) -> tuple[dict[str, tuple[float, float]], list[str]]:
+  """The stick ranges: the training ``ranges`` with the ends given replaced (vy and wz symmetric), and
+  one warning per axis that reaches outside its training range."""
+  limits = {
+    "vx": (
+      train.lin_vel_x[0] if min_vx is None else min_vx,
+      train.lin_vel_x[1] if max_vx is None else max_vx,
+    ),
+    "vy": train.lin_vel_y if max_vy is None else (-max_vy, max_vy),
+    "wz": train.ang_vel_z if max_wz is None else (-max_wz, max_wz),
+  }
+  trained = {"vx": train.lin_vel_x, "vy": train.lin_vel_y, "wz": train.ang_vel_z}
+  warnings = [
+    f"[gamepad] WARNING: {axis} range {tuple(limits[axis])} is outside the training range "
+    f"{tuple(trained[axis])}; the policy never saw these commands and may not follow them or may fall."
+    for axis in limits
+    if limits[axis][0] < trained[axis][0] or limits[axis][1] > trained[axis][1]
+  ]
+  return {axis: tuple(map(float, rng)) for axis, rng in limits.items()}, warnings
+
+
 def main():
   p = argparse.ArgumentParser(
     description="Drive a trained policy with a gamepad in the play viewer."
@@ -151,9 +183,38 @@ def main():
     help="Stick dead zone, fraction of full deflection.",
   )
   p.add_argument(
+    "--max-vx",
+    type=float,
+    default=None,
+    help="Stick fully up [m/s]. Default: the training max.",
+  )
+  p.add_argument(
+    "--min-vx",
+    type=float,
+    default=None,
+    help="Stick fully down [m/s], <= 0. Default: the training min.",
+  )
+  p.add_argument(
+    "--max-vy",
+    type=float,
+    default=None,
+    help="Stick fully left [m/s]; right is -max. Default: training.",
+  )
+  p.add_argument(
+    "--max-wz",
+    type=float,
+    default=None,
+    help="Right stick fully left [rad/s]; right is -max. Default: training.",
+  )
+  p.add_argument(
     "--device", default=None, help="Torch device. Default: cuda:0 if available."
   )
   args = p.parse_args()
+  for name in ("max_vx", "max_vy", "max_wz"):
+    if getattr(args, name) is not None and getattr(args, name) < 0:
+      p.error(f"--{name.replace('_', '-')} must be >= 0")
+  if args.min_vx is not None and args.min_vx > 0:
+    p.error("--min-vx must be <= 0 (stick fully down)")
 
   js_path = args.js_device or find_gamepad()
   if js_path is None:
@@ -210,6 +271,11 @@ def main():
     env_cfg.commands["twist"].debug_vis = True
   env_cfg.scene.num_envs = 1
   rl_cfg = load_rl_cfg(args.task)
+  limits, warnings = gamepad_ranges(
+    env_cfg.commands["twist"].ranges, args.max_vx, args.min_vx, args.max_vy, args.max_wz
+  )
+  for warning in warnings:
+    print(warning)
 
   base_env = ManagerBasedRlEnv(cfg=env_cfg, device=device)
   if args.terrain is not None:
@@ -222,7 +288,6 @@ def main():
   policy = runner.get_inference_policy(device=device)
 
   twist = base_env.command_manager.get_term("twist")
-  ranges = twist.cfg.ranges
   state = {"gamepad": True, "env_idx": 0}
 
   # After the term's own update (resampling, heading control, standing, the viser sliders), overwrite the
@@ -235,9 +300,9 @@ def main():
       return
     sticks = {code: _dead_zone(v, args.dead_zone) for code, v in pad.sticks.items()}
     i = state["env_idx"]
-    twist.vel_command_b[i, 0] = _to_range(-sticks[ABS_Y], ranges.lin_vel_x)
-    twist.vel_command_b[i, 1] = _to_range(-sticks[ABS_X], ranges.lin_vel_y)
-    twist.vel_command_b[i, 2] = _to_range(-sticks[ABS_RX], ranges.ang_vel_z)
+    twist.vel_command_b[i, 0] = _to_range(-sticks[ABS_Y], limits["vx"])
+    twist.vel_command_b[i, 1] = _to_range(-sticks[ABS_X], limits["vy"])
+    twist.vel_command_b[i, 2] = _to_range(-sticks[ABS_RX], limits["wz"])
 
   twist.compute = compute
 
@@ -265,7 +330,7 @@ def main():
     return GamepadViewer
 
   print(
-    f"[gamepad] {js_path}; ranges vx {ranges.lin_vel_x}, vy {ranges.lin_vel_y}, wz {ranges.ang_vel_z}, "
+    f"[gamepad] {js_path}; ranges vx {limits['vx']}, vy {limits['vy']}, wz {limits['wz']}, "
     f"dead zone {args.dead_zone}\n"
     "[gamepad] left stick: vx / vy, right stick: wz, A: reset, B: gamepad <-> random commands\n"
     f"[gamepad] mode: {mode_name()}"

@@ -13,7 +13,10 @@ reused on other tasks.  Importing the package (mjlab does it through the
 * ``Ame-Mjlab-Gap-Velocity-Rough-G1`` — the dense AME encoder on the gap
   board under mjlab's G1 rewards, with the deployment actor observations;
 * ``Ame-Mjlab-Gap-Progress-Velocity-Rough-G1`` — the same task promoted on
-  progress along the command instead of speed (``rule="progress"``).
+  progress along the command instead of speed (``rule="progress"``);
+* ``Ame-Mjlab-Gap-ProgressWorld-Velocity-Rough-G1`` — the progress task with
+  half the commands' linear velocity fixed in the world frame
+  (``rel_world_envs=0.5``).
 
 Train / play with mjlab's own CLIs::
 
@@ -61,5 +64,12 @@ register_mjlab_task(
   task_id="Ame-Mjlab-Gap-Progress-Velocity-Rough-G1",
   env_cfg=ame_gap_env_cfg(rule="progress"),
   play_env_cfg=ame_gap_env_cfg(play=True, rule="progress"),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-ProgressWorld-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(rule="progress", rel_world_envs=0.5),
+  play_env_cfg=ame_gap_env_cfg(play=True, rule="progress", rel_world_envs=0.5),
   rl_cfg=ame_symmetric_ppo_runner_cfg(),
 )

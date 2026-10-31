@@ -231,7 +231,9 @@ def ame_stage_env_cfg(stage: int, play: bool = False) -> ManagerBasedRlEnvCfg:
 
 
 def ame_gap_env_cfg(
-  play: bool = False, rule: str = GAP_CURRICULUM["rule"]
+  play: bool = False,
+  rule: str = GAP_CURRICULUM["rule"],
+  rel_world_envs: float = 0.0,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -240,8 +242,12 @@ def ame_gap_env_cfg(
   curriculum, mjlab's reward set and domain randomisation, and the deployment
   observation set in the actor (no ``base_lin_vel``).  ``rule`` overrides
   the curriculum's promotion rule (``"progress"`` for the direction-aware
-  one)."""
+  one); ``rel_world_envs`` is the fraction of twist commands whose linear
+  velocity is fixed in the world frame and rotated into the body every
+  step."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
+  twist: Any = cfg.commands["twist"]
+  twist.rel_world_envs = rel_world_envs
   apply_terrain(cfg, gap_board_cfg(), play)
   apply_deploy_observations(cfg)
   apply_patch_spawn(cfg)

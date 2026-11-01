@@ -16,7 +16,10 @@ reused on other tasks.  Importing the package (mjlab does it through the
   progress along the command instead of speed (``rule="progress"``);
 * ``Ame-Mjlab-Gap-ProgressHeading-Velocity-Rough-G1`` — the progress task
   with mjlab's heading commands back on (30 % of commands steer to a world
-  heading).
+  heading);
+* ``Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1`` — the heading task
+  with Success-Guided Sampling of terrain levels in place of the promotion
+  ladder (``ame.mdp.sgs``).
 
 Train / play with mjlab's own CLIs::
 
@@ -71,5 +74,14 @@ register_mjlab_task(
   task_id="Ame-Mjlab-Gap-ProgressHeading-Velocity-Rough-G1",
   env_cfg=ame_gap_env_cfg(rule="progress", heading_command=True),
   play_env_cfg=ame_gap_env_cfg(play=True, rule="progress", heading_command=True),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(rule="progress", heading_command=True, sgs=True),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True, rule="progress", heading_command=True, sgs=True
+  ),
   rl_cfg=ame_symmetric_ppo_runner_cfg(),
 )

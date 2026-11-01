@@ -16,7 +16,9 @@ and domain randomisation, so the recipe layers only its own pieces:
   stack the registered tasks train on (:mod:`ame.reward_cfg`);
 * ``apply_patch_spawn`` / ``apply_terrain_floor`` / ``add_tracking_metrics`` —
   on-stone spawns, a progress-gated terrain curriculum and honest per-step
-  tracking metrics, for the gap-board task.
+  tracking metrics, for the gap-board task;
+* ``apply_sgs`` — Success-Guided Sampling of terrain levels in place of the
+  promotion ladder (:mod:`ame.mdp.sgs`).
 
 Each mutator is independent, so they compose onto other tasks; the factories
 below are the from-scratch tasks.
@@ -43,6 +45,7 @@ from ame.mdp.metrics import (
   pelvis_vel_error,
   pelvis_yaw_error,
 )
+from ame.mdp.sgs import SGS_PARAMS, terrain_levels_sgs
 from ame.reward_cfg import apply_ame2_rewards, rebalance
 from ame.scan import apply_scan
 from ame.terrains import (
@@ -181,6 +184,18 @@ def apply_terrain_floor(
   )
 
 
+def apply_sgs(cfg: Any, sgs: dict[str, float] | None = None) -> None:
+  """Swap the ``terrain_levels`` term for :class:`ame.mdp.terrain_levels_sgs`
+  with the same params (same success signal, spawn rows and floor) plus the
+  SGS hyperparameters (``SGS_PARAMS`` overridden by ``sgs``).  Apply after
+  ``apply_terrain_floor``."""
+  term = cfg.curriculum.get("terrain_levels")
+  if term is None or term.func is not terrain_levels_floor:
+    raise ValueError("apply_sgs needs apply_terrain_floor's terrain_levels term")
+  term.func = terrain_levels_sgs
+  term.params["sgs"] = {**SGS_PARAMS, **(sgs or {})}
+
+
 def add_tracking_metrics(cfg: Any, command_name: str = "twist") -> None:
   """Log pelvis tracking error, speed, progress along the command and
   commanded speed as episode means."""
@@ -248,6 +263,7 @@ def ame_gap_env_cfg(
   play: bool = False,
   rule: str = GAP_CURRICULUM["rule"],
   heading_command: bool = False,
+  sgs: bool = False,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -257,7 +273,8 @@ def ame_gap_env_cfg(
   observation set in the actor (no ``base_lin_vel``).  ``rule`` overrides
   the curriculum's promotion rule (``"progress"`` for the direction-aware
   one); ``heading_command`` turns heading control on
-  (``apply_heading_commands``)."""
+  (``apply_heading_commands``); ``sgs`` replaces the promotion ladder with
+  Success-Guided Sampling of levels (``apply_sgs``)."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   if heading_command:
     apply_heading_commands(cfg)
@@ -267,6 +284,8 @@ def ame_gap_env_cfg(
   add_tracking_metrics(cfg)
   if not play:
     apply_terrain_floor(cfg, command_name="twist", **{**GAP_CURRICULUM, "rule": rule})
+    if sgs:
+      apply_sgs(cfg)
   return cfg
 
 
@@ -285,6 +304,7 @@ __all__ = [
   "apply_patch_spawn",
   "apply_rewards",
   "apply_scan",
+  "apply_sgs",
   "apply_terrain",
   "apply_terrain_floor",
   "apply_twist_commands",

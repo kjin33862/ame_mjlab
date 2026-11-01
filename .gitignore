@@ -7,3 +7,5 @@ logs/
 wandb/
 outputs/
 *.egg-info/
+checkpoints/
+*.log

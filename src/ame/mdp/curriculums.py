@@ -88,6 +88,18 @@ class terrain_levels_floor:
       return self._levels(terrain, generator)
     if int(env.common_step_counter) < self.hold_steps:
       return self._levels(terrain, generator)
+    move_up, move_down = self._judge(env, env_ids, command_name)
+    terrain.update_env_origins(env_ids, move_up, move_down)
+    return self._levels(terrain, generator)
+
+  def _judge(
+    self, env: ManagerBasedRlEnv, env_ids: torch.Tensor, command_name: str
+  ) -> tuple[torch.Tensor, torch.Tensor]:
+    """The ended episodes' ``(move_up, move_down)`` under ``self.rule``."""
+    terrain = env.scene.terrain
+    assert terrain is not None
+    generator = terrain.cfg.terrain_generator
+    assert generator is not None
     command = env.command_manager.get_command(command_name)
     assert command is not None
     robot = env.scene["robot"]
@@ -126,8 +138,7 @@ class terrain_levels_floor:
         < torch.norm(command[env_ids, :2], dim=1) * env.max_episode_length_s * 0.5
       )
     move_down = move_down & ~move_up & above_floor
-    terrain.update_env_origins(env_ids, move_up, move_down)
-    return self._levels(terrain, generator)
+    return move_up, move_down
 
   @staticmethod
   def _levels(terrain: Any, generator: Any) -> dict[str, torch.Tensor]:

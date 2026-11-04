@@ -12,6 +12,7 @@ command): `matrix_plots/matrix_summary.csv` (open loop) and `goal_plots/goal_sum
 | gap_progress_1024 | progress-rule (`cd93ec0`) | none | Ame-Mjlab-Gap-Progress-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Progress-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_1024 --agent.logger tensorboard` | stairs_inv open d0 0.50, d0.25 0.02; goal d0 0.97, d0.25 0.04, d≥0.5 ≤0.07. stone_lattice d0.5 0.24. pyramid_stairs ≥0.98. The progress rule alone did not teach climbing. |
 | gap_progress_heading_1024 | world-cmd | run/gap_progress_heading_1024 | Ame-Mjlab-Gap-ProgressHeading-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_1024 --agent.logger tensorboard` | |
 | gap_progress_heading_sgs_1024 | sgs | run/gap_progress_heading_sgs_1024 | Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_sgs_1024 --agent.logger tensorboard` | |
+| gap_progress_heading_alphanist_1024 | sgs | run/gap_progress_heading_alphanist_1024 | Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_alphanist_1024 --agent.logger tensorboard` | |
 
 gap_1024 and gap_1024_s43 have no tag and no recorded commit; the branch is inferred from the task (the gap task
 first appeared in `49a85ca`). Their commands are reconstructed from `checkpoints/<run>/params/agent.yaml`.
@@ -37,3 +38,13 @@ and App. B.2) replaces the promotion ladder (`ame.mdp.sgs.terrain_levels_sgs`, `
   (stairs up). Neither has spawn patches, so the spawn is always the tile centre.
 - Logs, under `Curriculum/terrain_levels/`: the heading run's `mean`, `max`, `<family>` unchanged, plus
   `<family>/p_<l>`, `<family>/prob_<l>` and `<family>/fill_min`.
+
+## gap_progress_heading_alphanist_1024: AlphaNIST sampling parameters
+
+Same as gap_progress_heading_sgs_1024 except the SGS sampling parameters (`ALPHANIST_SGS_PARAMS`):
+t = 0.5, κ = 1, T = 1 (AlphaNIST eq. 4); H = 100 and eps = 1e-8 unchanged. Then
+`w = sqrt(p (1-p))` up to eps and `prob = (w+eps) / Σ(w+eps)`, i.e. `sqrt(p (1-p))` normalized: the
+weight peaks at p = 0.5 and is much flatter than SGS's (κ = 5, T = 2), so levels far from the target are
+drawn more often. Unlike SGS, a level at p = 0 or 1 (including an empty buffer) does not drop to the eps
+floor: its weight is (eps)^0.5 = 1e-4 (exponent κt = 0.5), so "up to eps" is up to sqrt(eps) there, about
+1e-4 of a mid-range level's weight. A family whose levels are all at 0 or 1 is sampled uniformly.

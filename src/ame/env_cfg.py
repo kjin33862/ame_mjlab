@@ -264,6 +264,7 @@ def ame_gap_env_cfg(
   rule: str = GAP_CURRICULUM["rule"],
   heading_command: bool = False,
   sgs: bool = False,
+  sgs_params: dict[str, float] | None = None,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -274,7 +275,8 @@ def ame_gap_env_cfg(
   the curriculum's promotion rule (``"progress"`` for the direction-aware
   one); ``heading_command`` turns heading control on
   (``apply_heading_commands``); ``sgs`` replaces the promotion ladder with
-  Success-Guided Sampling of levels (``apply_sgs``)."""
+  Success-Guided Sampling of levels (``apply_sgs``), with ``sgs_params``
+  overriding ``SGS_PARAMS``."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   if heading_command:
     apply_heading_commands(cfg)
@@ -285,7 +287,7 @@ def ame_gap_env_cfg(
   if not play:
     apply_terrain_floor(cfg, command_name="twist", **{**GAP_CURRICULUM, "rule": rule})
     if sgs:
-      apply_sgs(cfg)
+      apply_sgs(cfg, sgs_params)
   return cfg
 
 

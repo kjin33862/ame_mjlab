@@ -31,6 +31,17 @@ SGS_PARAMS: dict[str, float] = {
 """Buffer length ``H``, target success rate ``t``, sharpness ``kappa``,
 softmax temperature ``T`` and the floor/offset ``eps`` (App. B.2)."""
 
+ALPHANIST_SGS_PARAMS: dict[str, float] = {
+  **SGS_PARAMS,
+  "t": 0.5,
+  "kappa": 1.0,
+  "T": 1.0,
+}
+"""AlphaNIST (eq. 4) sampling: ``t = 0.5, kappa = 1, T = 1`` make the weight
+``sqrt(p (1 - p))`` up to ``eps`` (up to ``sqrt(eps)`` at ``p = 0`` or ``1``)
+and the probabilities that weight normalized; ``H`` and ``eps`` as in
+``SGS_PARAMS``."""
+
 
 def sgs_weights(p: torch.Tensor, t: float, kappa: float, eps: float) -> torch.Tensor:
   """``(p+eps)^(kappa t) (1-p+eps)^(kappa (1-t))`` floored at ``eps``; peaks
@@ -170,6 +181,7 @@ class terrain_levels_sgs(terrain_levels_floor):
 
 
 __all__ = [
+  "ALPHANIST_SGS_PARAMS",
   "SGS_PARAMS",
   "OutcomeBuffer",
   "sgs_probs",

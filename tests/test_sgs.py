@@ -175,3 +175,54 @@ def test_sgs_term_returns_logs_when_no_env_ended() -> None:
   assert int(term.buffer.fill.sum()) == 0
   assert env.scene.terrain.terrain_levels.tolist() == [3, 5]
   assert sum(logs[f"a/prob_{level}"] for level in range(10)) == pytest.approx(1.0)
+
+
+def test_alphanist_probs_are_normalized_sqrt_p_one_minus_p() -> None:
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS
+
+  s = ALPHANIST_SGS_PARAMS
+  assert (s["t"], s["kappa"], s["T"]) == (0.5, 1.0, 1.0)
+  assert (s["H"], s["eps"]) == (SGS_PARAMS["H"], SGS_PARAMS["eps"])
+  # one family of interior rates, one with the ends: at p = 0 or 1 the weight is
+  # (eps)^0.5 = 1e-4, not the eps floor, so the ends match only to ~sqrt(eps)
+  p = torch.tensor(
+    [
+      [0.01, 0.1, 0.25, 0.5, 0.66, 0.75, 0.9, 0.99, 0.3, 0.6],
+      [0.0, 1.0, 0.0, 0.2, 0.4, 0.5, 0.8, 1.0, 0.05, 0.95],
+    ],
+    dtype=torch.float64,
+  )
+  probs = sgs_probs(p, s["t"], s["kappa"], s["T"], s["eps"])
+  w = torch.sqrt(p * (1 - p))
+  expected = w / w.sum(dim=-1, keepdim=True)
+  assert torch.allclose(probs[0], expected[0], rtol=0, atol=1e-6)
+  assert torch.allclose(probs[1], expected[1], rtol=0, atol=1e-4)
+
+
+def test_alphanist_task_differs_from_sgs_only_in_the_sampling_params() -> None:
+  from ame.env_cfg import ame_gap_env_cfg
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS
+
+  sgs = ame_gap_env_cfg(rule="progress", heading_command=True, sgs=True)
+  alpha = ame_gap_env_cfg(
+    rule="progress", heading_command=True, sgs=True, sgs_params=ALPHANIST_SGS_PARAMS
+  )
+  a, b = sgs.curriculum["terrain_levels"], alpha.curriculum["terrain_levels"]
+  assert a.params["sgs"] == SGS_PARAMS
+  assert b.params["sgs"] == ALPHANIST_SGS_PARAMS
+  b.params["sgs"] = dict(SGS_PARAMS)
+  norm = lambda cfg: re.sub(r" at 0x[0-9a-f]+", "", repr(cfg))  # noqa: E731
+  assert norm(sgs) == norm(alpha)
+
+
+def test_alphanist_task_is_registered_and_existing_sgs_task_unchanged() -> None:
+  from mjlab.tasks.registry import list_tasks, load_env_cfg
+
+  import ame  # noqa: F401
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS
+
+  assert "Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1" in list_tasks()
+  alpha = load_env_cfg("Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1")
+  sgs = load_env_cfg("Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1")
+  assert alpha.curriculum["terrain_levels"].params["sgs"] == ALPHANIST_SGS_PARAMS
+  assert sgs.curriculum["terrain_levels"].params["sgs"] == SGS_PARAMS

@@ -13,6 +13,7 @@ command): `matrix_plots/matrix_summary.csv` (open loop) and `goal_plots/goal_sum
 | gap_progress_heading_1024 | world-cmd | run/gap_progress_heading_1024 | Ame-Mjlab-Gap-ProgressHeading-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_1024 --agent.logger tensorboard` | |
 | gap_progress_heading_sgs_1024 | sgs | run/gap_progress_heading_sgs_1024 | Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_sgs_1024 --agent.logger tensorboard` | |
 | gap_progress_heading_alphanist_1024 | sgs | run/gap_progress_heading_alphanist_1024 | Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_alphanist_1024 --agent.logger tensorboard` | |
+| gap_edge_sgs_1024 | sgs | run/gap_edge_sgs_1024 | Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_1024 --agent.logger tensorboard` | |
 
 gap_1024 and gap_1024_s43 have no tag and no recorded commit; the branch is inferred from the task (the gap task
 first appeared in `49a85ca`). Their commands are reconstructed from `checkpoints/<run>/params/agent.yaml`.
@@ -48,3 +49,24 @@ weight peaks at p = 0.5 and is much flatter than SGS's (κ = 5, T = 2), so level
 drawn more often. Unlike SGS, a level at p = 0 or 1 (including an empty buffer) does not drop to the eps
 floor: its weight is (eps)^0.5 = 1e-4 (exponent κt = 0.5), so "up to eps" is up to sqrt(eps) there, about
 1e-4 of a mid-range level's weight. A family whose levels are all at 0 or 1 is sampled uniformly.
+
+## gap_edge_sgs_1024: centre spawn, first passage to the tile edge
+
+Same as gap_progress_heading_sgs_1024 (rewards, commands, SGS H = 100, t = 0.66, κ = 5, T = 2, eps = 1e-8,
+board, PPO) except the spawn and SGS's success signal:
+
+- Spawn (`reset_root_state_at_centre`, `apply_centre_spawn`): a uniform point in a 0.5 m disc around the tile
+  centre, heading uniform in (-π, π) on every family. On the stone lattice, the stone nearest that point
+  (±3 cm, as the patch spawn). Elsewhere the ground is the highest terrain point within ±0.14 m of the spawn
+  (ray-cast once at construction on a 2 cm grid), plus 1-5 cm. The env origin stays the tile centre. Play
+  keeps the SGS task's play config (patch spawn): the play board is not a curriculum board.
+- Success (`terrain_levels_sgs_edge`, `apply_edge_success`): the pelvis's Chebyshev distance
+  max(|dx|, |dy|) from the tile centre reached D = 3.75 m at any step of the episode (`edge_distance` metric,
+  a running max, terminal step included). A fall afterwards still counts; nothing else does (the progress /
+  tracking / survival branches are gone from this task).
+- D = 3.75 from the offline check on the success audit's centre-spawn rollouts (`notes/success_audit_cheb.py`,
+  `logs/eval_results/success_audit/board/cheb_check.csv`): balanced accuracy against "crossed before falling",
+  mean over the 5 families 0.987 (worst 0.948, stairs up) vs 0.947 at 3.5 and 0.980 at 4.0; the first passage
+  is on the own tile in 100 % of successes (at 4.0 it is on the neighbour tile every time: 4.0 is the edge).
+- Logs add `Curriculum/terrain_levels/<family>/edge_frac` (share of the family's last 500 recorded episodes
+  that reached the edge) and `Episode_Metrics/edge_distance` (mean farthest excursion of ended episodes).

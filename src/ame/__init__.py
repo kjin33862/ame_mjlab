@@ -22,7 +22,11 @@ reused on other tasks.  Importing the package (mjlab does it through the
   ladder (``ame.mdp.sgs``);
 * ``Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1`` — the SGS task
   with AlphaNIST's sampling parameters (``ALPHANIST_SGS_PARAMS``: weight
-  ``sqrt(p (1 - p))``, normalized).
+  ``sqrt(p (1 - p))``, normalized);
+* ``Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1`` — the SGS task with a centre
+  spawn (within 0.5 m of the tile centre, uniform heading) and first passage
+  to the tile edge as SGS's success (``apply_centre_spawn``,
+  ``apply_edge_success``, ``EDGE_DISTANCE``).
 
 Train / play with mjlab's own CLIs::
 
@@ -34,7 +38,12 @@ from __future__ import annotations
 
 from mjlab.tasks.registry import register_mjlab_task
 
-from ame.env_cfg import ame_gap_env_cfg, ame_rough_env_cfg, ame_stage_env_cfg
+from ame.env_cfg import (
+  EDGE_DISTANCE,
+  ame_gap_env_cfg,
+  ame_rough_env_cfg,
+  ame_stage_env_cfg,
+)
 from ame.mdp.sgs import ALPHANIST_SGS_PARAMS
 from ame.rl_cfg import ame_symmetric_ppo_runner_cfg, delta_ppo_runner_cfg
 
@@ -97,6 +106,21 @@ register_mjlab_task(
     heading_command=True,
     sgs=True,
     sgs_params=ALPHANIST_SGS_PARAMS,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True, rule="progress", heading_command=True, sgs=True
+  ),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
   ),
   play_env_cfg=ame_gap_env_cfg(
     play=True, rule="progress", heading_command=True, sgs=True

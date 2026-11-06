@@ -18,7 +18,10 @@ and domain randomisation, so the recipe layers only its own pieces:
   on-stone spawns, a progress-gated terrain curriculum and honest per-step
   tracking metrics, for the gap-board task;
 * ``apply_sgs`` — Success-Guided Sampling of terrain levels in place of the
-  promotion ladder (:mod:`ame.mdp.sgs`).
+  promotion ladder (:mod:`ame.mdp.sgs`);
+* ``apply_centre_spawn`` / ``apply_edge_success`` — spawn near the tile
+  centre with a uniform heading, and let SGS record first passage to the
+  tile edge as success.
 
 Each mutator is independent, so they compose onto other tasks; the factories
 below are the from-scratch tasks.
@@ -37,15 +40,22 @@ from mjlab.tasks.velocity.config.g1.env_cfgs import unitree_g1_rough_env_cfg
 from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
 
 from ame.mdp.curriculums import terrain_levels_floor
-from ame.mdp.events import LATTICE_YAWS, SPAWN_POSE, reset_root_state_on_patches
+from ame.mdp.events import (
+  CENTRE_SPAWN,
+  LATTICE_YAWS,
+  SPAWN_POSE,
+  reset_root_state_at_centre,
+  reset_root_state_on_patches,
+)
 from ame.mdp.metrics import (
   command_speed,
+  edge_distance,
   pelvis_progress,
   pelvis_speed,
   pelvis_vel_error,
   pelvis_yaw_error,
 )
-from ame.mdp.sgs import SGS_PARAMS, terrain_levels_sgs
+from ame.mdp.sgs import SGS_PARAMS, terrain_levels_sgs, terrain_levels_sgs_edge
 from ame.reward_cfg import apply_ame2_rewards, rebalance
 from ame.scan import apply_scan
 from ame.terrains import (
@@ -70,6 +80,14 @@ TWIST_RANGES = {
 GAP_CURRICULUM = {"floor": 0, "rule": "tracking", "spawn_max": 2, "track_ratio": 0.6}
 """Rows 0-2 to start; a timed-out episode promotes only if it covered 60 % of
 its commanded speed, a stall or an early fall demotes."""
+
+EDGE_DISTANCE = 3.75
+"""First-passage threshold, m of Chebyshev distance from the tile centre:
+1/4 m inside the 4 m tile edge.  On the lattice it lies on the solid edge
+ring at every row (the ring is at least 0.30 m wide), out of reach of a
+robot walking in the pit; on the stairs it is on the outer flat; on the
+height fields it is the flat border.  Picked offline against the success
+audit's ground truth (logs/eval_results/success_audit)."""
 
 STAGE_REWARDS = {
   # (stage 1, stage 2) weights, from the reference's FINETUNE conditionals.
@@ -196,6 +214,41 @@ def apply_sgs(cfg: Any, sgs: dict[str, float] | None = None) -> None:
   term.params["sgs"] = {**SGS_PARAMS, **(sgs or {})}
 
 
+def apply_centre_spawn(cfg: Any, params: dict[str, Any] | None = None) -> None:
+  """Replace ``reset_base`` with the centre spawn
+  (:class:`ame.mdp.reset_root_state_at_centre`, ``CENTRE_SPAWN`` overridden
+  by ``params``): a point within 0.5 m of the tile centre (the nearest stone
+  on a lattice), a uniform heading, the env origin left at the tile centre.
+  Needs a curriculum board."""
+  if "reset_base" not in cfg.events:
+    raise ValueError("no reset_base event to replace")
+  cfg.events["reset_base"] = EventTermCfg(
+    func=reset_root_state_at_centre,
+    mode="reset",
+    params={**CENTRE_SPAWN, **(params or {})},
+  )
+
+
+def apply_edge_success(cfg: Any, distance: float = EDGE_DISTANCE) -> None:
+  """Make first passage to the tile edge SGS's success signal: swap the
+  ``terrain_levels`` term for :class:`ame.mdp.terrain_levels_sgs_edge`
+  (success iff the pelvis's Chebyshev distance from the tile centre reached
+  ``distance`` at some step; the old rule's ``rule`` / ``track_ratio`` are
+  dropped) and add the ``edge_distance`` metric it reads.  Floor, spawn
+  rows, ``hold_steps`` and the SGS parameters are kept.  Apply after
+  ``apply_sgs``."""
+  term = cfg.curriculum.get("terrain_levels")
+  if term is None or term.func is not terrain_levels_sgs:
+    raise ValueError("apply_edge_success needs apply_sgs's terrain_levels term")
+  term.func = terrain_levels_sgs_edge
+  term.params = {
+    **{k: v for k, v in term.params.items() if k not in ("rule", "track_ratio")},
+    "edge_distance": float(distance),
+    "metric": "edge_distance",
+  }
+  cfg.metrics["edge_distance"] = MetricsTermCfg(func=edge_distance, reduce="last")
+
+
 def add_tracking_metrics(cfg: Any, command_name: str = "twist") -> None:
   """Log pelvis tracking error, speed, progress along the command and
   commanded speed as episode means."""
@@ -265,6 +318,8 @@ def ame_gap_env_cfg(
   heading_command: bool = False,
   sgs: bool = False,
   sgs_params: dict[str, float] | None = None,
+  centre_spawn: bool = False,
+  edge_distance: float | None = None,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -276,22 +331,34 @@ def ame_gap_env_cfg(
   one); ``heading_command`` turns heading control on
   (``apply_heading_commands``); ``sgs`` replaces the promotion ladder with
   Success-Guided Sampling of levels (``apply_sgs``), with ``sgs_params``
-  overriding ``SGS_PARAMS``."""
+  overriding ``SGS_PARAMS``.  ``centre_spawn`` spawns near the tile centre
+  instead of on a patch (``apply_centre_spawn``; training only, the play
+  board is not a curriculum board and keeps the patch spawn);
+  ``edge_distance`` (with ``sgs``) makes first passage to that Chebyshev
+  distance SGS's success signal (``apply_edge_success``)."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   if heading_command:
     apply_heading_commands(cfg)
   apply_terrain(cfg, gap_board_cfg(), play)
   apply_deploy_observations(cfg)
-  apply_patch_spawn(cfg)
+  if centre_spawn and not play:
+    apply_centre_spawn(cfg)
+  else:
+    apply_patch_spawn(cfg)
   add_tracking_metrics(cfg)
   if not play:
     apply_terrain_floor(cfg, command_name="twist", **{**GAP_CURRICULUM, "rule": rule})
     if sgs:
       apply_sgs(cfg, sgs_params)
+      if edge_distance is not None:
+        apply_edge_success(cfg, edge_distance)
+    elif edge_distance is not None:
+      raise ValueError("edge_distance is an SGS success signal: set sgs=True")
   return cfg
 
 
 __all__ = [
+  "EDGE_DISTANCE",
   "GAP_CURRICULUM",
   "NUM_ENVS",
   "REWARD_STACKS",
@@ -301,7 +368,9 @@ __all__ = [
   "ame_gap_env_cfg",
   "ame_rough_env_cfg",
   "ame_stage_env_cfg",
+  "apply_centre_spawn",
   "apply_deploy_observations",
+  "apply_edge_success",
   "apply_heading_commands",
   "apply_patch_spawn",
   "apply_rewards",

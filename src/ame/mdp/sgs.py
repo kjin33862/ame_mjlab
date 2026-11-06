@@ -180,11 +180,85 @@ class terrain_levels_sgs(terrain_levels_floor):
     return result
 
 
+EDGE_LOG_EPISODES = 500
+"""Window of :class:`terrain_levels_sgs_edge`'s per-family ``edge_frac`` log:
+the share of that family's last this-many episodes that reached the edge."""
+
+
+class terrain_levels_sgs_edge(terrain_levels_sgs):
+  """SGS whose success signal is first passage to the tile edge.
+
+  An episode succeeds if the pelvis's Chebyshev distance ``max(|dx|, |dy|)``
+  from the tile centre reached ``edge_distance`` at any step; a fall after
+  that still counts, and nothing else does (no progress, tracking or
+  survival branch).  The distance is the ``metric`` metrics term's running
+  maximum (:class:`ame.mdp.edge_distance`), read before the metrics manager
+  resets it.  Sampling, buffers, floor, arming and ``hold_steps`` are
+  :class:`terrain_levels_sgs`'s.  Logs add ``<family>/edge_frac``, the share
+  of the family's last ``EDGE_LOG_EPISODES`` recorded episodes that reached
+  the edge.
+  """
+
+  def __init__(self, cfg: Any, env: ManagerBasedRlEnv) -> None:
+    super().__init__(cfg, env)
+    self.edge_distance = float(cfg.params["edge_distance"])
+    self.metric = str(cfg.params.get("metric", "edge_distance"))
+    self.edge_log = OutcomeBuffer(
+      families=self.buffer.families,
+      levels=1,
+      H=EDGE_LOG_EPISODES,
+      device=self.buffer.outcomes.device,
+    )
+
+  def __call__(  # pyright: ignore[reportIncompatibleMethodOverride]
+    self,
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor,
+    command_name: str,
+    floor: int,
+    edge_distance: float,
+    metric: str = "edge_distance",
+    hold_steps: int = 0,
+    sgs: dict[str, float] | None = None,
+  ) -> dict[str, Any]:
+    del edge_distance, metric  # resolved at construction
+    return super().__call__(
+      env, env_ids, command_name, floor, hold_steps=hold_steps, sgs=sgs
+    )
+
+  def _judge(
+    self, env: ManagerBasedRlEnv, env_ids: torch.Tensor, command_name: str
+  ) -> tuple[torch.Tensor, torch.Tensor]:
+    del command_name
+    metrics: Any = env.metrics_manager
+    if self.metric not in metrics.active_terms:
+      raise ValueError(
+        f"the edge rule needs the {self.metric} metric (apply_edge_success)"
+      )
+    term = metrics._term_cfgs[metrics.active_terms.index(self.metric)].func
+    success = term.max_distance[env_ids] >= self.edge_distance
+    terrain: Any = env.scene.terrain
+    family = terrain.terrain_types[env_ids]
+    self.edge_log.record(family, torch.zeros_like(family), success)
+    return success, ~success
+
+  def _sgs_levels(self, terrain: Any, generator: Any) -> dict[str, Any]:
+    result = super()._sgs_levels(terrain, generator)
+    names = list(generator.sub_terrains.keys())
+    if self.edge_log.families == len(names):
+      frac = self.edge_log.success_rate()[:, 0].tolist()
+      for f, name in enumerate(names):
+        result[f"{name}/edge_frac"] = frac[f]
+    return result
+
+
 __all__ = [
   "ALPHANIST_SGS_PARAMS",
+  "EDGE_LOG_EPISODES",
   "SGS_PARAMS",
   "OutcomeBuffer",
   "sgs_probs",
   "sgs_weights",
   "terrain_levels_sgs",
+  "terrain_levels_sgs_edge",
 ]

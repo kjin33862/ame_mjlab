@@ -26,7 +26,10 @@ reused on other tasks.  Importing the package (mjlab does it through the
 * ``Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1`` — the SGS task with a centre
   spawn (within 0.5 m of the tile centre, uniform heading) and first passage
   to the tile edge as SGS's success (``apply_centre_spawn``,
-  ``apply_edge_success``, ``EDGE_DISTANCE``).
+  ``apply_edge_success``, ``EDGE_DISTANCE``);
+* ``Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1`` — the edge SGS task
+  with the ``track_angular_velocity`` reward's std at ``sqrt(0.25)``
+  (``ang_vel_std``).
 
 Train / play with mjlab's own CLIs::
 
@@ -35,6 +38,8 @@ Train / play with mjlab's own CLIs::
 """
 
 from __future__ import annotations
+
+import math
 
 from mjlab.tasks.registry import register_mjlab_task
 
@@ -124,6 +129,26 @@ register_mjlab_task(
   ),
   play_env_cfg=ame_gap_env_cfg(
     play=True, rule="progress", heading_command=True, sgs=True
+  ),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_std=math.sqrt(0.25),
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_std=math.sqrt(0.25),
   ),
   rl_cfg=ame_symmetric_ppo_runner_cfg(),
 )

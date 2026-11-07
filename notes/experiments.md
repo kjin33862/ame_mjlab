@@ -14,6 +14,7 @@ command): `matrix_plots/matrix_summary.csv` (open loop) and `goal_plots/goal_sum
 | gap_progress_heading_sgs_1024 | sgs | run/gap_progress_heading_sgs_1024 | Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_sgs_1024 --agent.logger tensorboard` | |
 | gap_progress_heading_alphanist_1024 | sgs | run/gap_progress_heading_alphanist_1024 | Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_alphanist_1024 --agent.logger tensorboard` | |
 | gap_edge_sgs_1024 | sgs | run/gap_edge_sgs_1024 | Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_1024 --agent.logger tensorboard` | |
+| gap_edge_sgs_angstd_1024 | sgs | run/gap_edge_sgs_angstd_1024 | Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angstd_1024 --agent.logger tensorboard` | |
 
 gap_1024 and gap_1024_s43 have no tag and no recorded commit; the branch is inferred from the task (the gap task
 first appeared in `49a85ca`). Their commands are reconstructed from `checkpoints/<run>/params/agent.yaml`.
@@ -70,3 +71,12 @@ board, PPO) except the spawn and SGS's success signal:
   is on the own tile in 100 % of successes (at 4.0 it is on the neighbour tile every time: 4.0 is the edge).
 - Logs add `Curriculum/terrain_levels/<family>/edge_frac` (share of the family's last 500 recorded episodes
   that reached the edge) and `Episode_Metrics/edge_distance` (mean farthest excursion of ended episodes).
+
+## gap_edge_sgs_angstd_1024: tighter yaw-rate tracking kernel
+
+Same as gap_edge_sgs_1024 (spawn, edge success D = 3.75 m, SGS H = 100, t = 0.66, κ = 5, T = 2, eps = 1e-8,
+commands, board, PPO) except the `track_angular_velocity` reward's std: sqrt(0.25) = 0.5 instead of mjlab's
+sqrt(0.5) ≈ 0.707 (`ame_gap_env_cfg(ang_vel_std=...)`; weight 2.0 unchanged, every other reward term
+identical). The reward is exp(-e / std²) with e = (ω_z,cmd − ω_z)² + ω_x² + ω_y² (body frame, so roll and
+pitch rates count too), so std² halves from 0.5 to 0.25: an error that earned exp(-1) before now earns exp(-2).
+The play config gets the same std.

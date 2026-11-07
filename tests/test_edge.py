@@ -14,6 +14,7 @@ import torch
 
 EDGE_TASK = "Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1"
 SGS_TASK = "Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1"
+ANGSTD_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1"
 ROOT_Z = 0.76  # the stub robot's default root height above the ground
 
 
@@ -325,6 +326,38 @@ def test_edge_task_differs_from_sgs_only_in_spawn_and_success() -> None:
   assert norm(load_env_cfg(SGS_TASK, play=True)) == norm(
     load_env_cfg(EDGE_TASK, play=True)
   )
+
+
+def test_angstd_task_differs_from_edge_only_in_ang_vel_std() -> None:
+  from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
+
+  import ame  # noqa: F401
+
+  assert ANGSTD_TASK in list_tasks()
+  norm = lambda x: re.sub(r" at 0x[0-9a-f]+", "", repr(x))  # noqa: E731
+  for play in (False, True):
+    edge = load_env_cfg(EDGE_TASK, play=play)
+    angstd = load_env_cfg(ANGSTD_TASK, play=play)
+    term = angstd.rewards["track_angular_velocity"]
+    assert term.params["std"] == math.sqrt(0.25) == 0.5
+    assert term.weight == 2.0
+    assert edge.rewards["track_angular_velocity"].params["std"] == math.sqrt(0.5)
+    # every other reward term identical
+    assert edge.rewards.keys() == angstd.rewards.keys()
+    for name in edge.rewards:
+      if name != "track_angular_velocity":
+        assert norm(edge.rewards[name]) == norm(angstd.rewards[name]), name
+    # and nothing else in the config differs
+    edge.rewards["track_angular_velocity"].params["std"] = 0.5
+    assert norm(edge) == norm(angstd)
+  assert norm(load_rl_cfg(EDGE_TASK)) == norm(load_rl_cfg(ANGSTD_TASK))
+
+
+def test_ang_vel_std_default_changes_nothing() -> None:
+  from ame.env_cfg import ame_gap_env_cfg
+
+  norm = lambda x: re.sub(r" at 0x[0-9a-f]+", "", repr(x))  # noqa: E731
+  assert norm(ame_gap_env_cfg()) == norm(ame_gap_env_cfg(ang_vel_std=None))
 
 
 def test_edge_distance_needs_sgs() -> None:

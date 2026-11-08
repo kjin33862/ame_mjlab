@@ -16,6 +16,7 @@ command): `matrix_plots/matrix_summary.csv` (open loop) and `goal_plots/goal_sum
 | gap_edge_sgs_1024 | sgs | run/gap_edge_sgs_1024 | Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_1024 --agent.logger tensorboard` | |
 | gap_edge_sgs_angstd_1024 | sgs | run/gap_edge_sgs_angstd_1024 | Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angstd_1024 --agent.logger tensorboard` | |
 | gap_edge_sgs_angw4_1024 | sgs | run/gap_edge_sgs_angw4_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angw4_1024 --agent.logger tensorboard` | |
+| gap_edge_sgs_angw4z_1024 | sgs | run/gap_edge_sgs_angw4z_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angw4z_1024 --agent.logger tensorboard` | |
 
 gap_1024 and gap_1024_s43 have no tag and no recorded commit; the branch is inferred from the task (the gap task
 first appeared in `49a85ca`). Their commands are reconstructed from `checkpoints/<run>/params/agent.yaml`.
@@ -91,3 +92,15 @@ goal-mode play on pyramid_stairs_inv d0.5, gap_edge_sgs_1024 (model_9999) carrie
 (mean (ω_z,cmd − ω_z)² ≈ 1.0 over 192 robots, 97 % of it on steps with |ω_z,cmd| ≥ 0.3; uncommitted
 analysis on the eval branch). Unlike the AngStd variant this keeps the kernel's shape and only doubles the term
 against the rest of the reward. The play config gets the same weight.
+
+## gap_edge_sgs_angw4z_1024: yaw-rate-only tracking kernel at weight 4
+
+Same as gap_edge_sgs_angw4_1024 except the `track_angular_velocity` term's function: mjlab's
+`track_angular_velocity` (body frame, error (ω_z,cmd − ω_z)² + ω_x² + ω_y²) is replaced by
+`ame.mdp.rewards.track_ang_vel_z_world_exp` on the root link (pelvis): exp(−(ω_z,cmd − ω_z,world)² / std²), yaw rate
+only, world frame (`ame_gap_env_cfg(ang_vel_z_only=True)`). std stays sqrt(0.5), weight 4.0 as in AngW4; the term
+keeps its name, and roll / pitch stay penalised only by the existing `body_ang_vel` (torso xy, −0.05). Every other
+reward term, the terminations and the rest of the config are identical to gap_edge_sgs_1024. Compared with AngW4 it
+isolates the roll / pitch coupling: in goal-mode play on pyramid_stairs_inv d0.5, gap_edge_sgs_1024 (model_9999)
+has mean exp(−(ω_x² + ω_y²)/0.5) = 0.73 (0.80 on flat), the factor by which the coupled kernel scales the yaw reward
+and its gradient. The play config gets the same term.

@@ -36,9 +36,11 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.config.g1.env_cfgs import unitree_g1_rough_env_cfg
 from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
 
+from ame.mdp import rewards as ame_rew
 from ame.mdp.curriculums import terrain_levels_floor
 from ame.mdp.events import (
   CENTRE_SPAWN,
@@ -322,6 +324,7 @@ def ame_gap_env_cfg(
   edge_distance: float | None = None,
   ang_vel_std: float | None = None,
   ang_vel_weight: float | None = None,
+  ang_vel_z_only: bool = False,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -340,7 +343,12 @@ def ame_gap_env_cfg(
   distance SGS's success signal (``apply_edge_success``).  ``ang_vel_std``,
   if set, replaces the ``track_angular_velocity`` reward's ``std`` (``None``
   keeps mjlab's); ``ang_vel_weight``, if set, replaces that term's weight
-  (``None`` keeps mjlab's 2.0)."""
+  (``None`` keeps mjlab's 2.0).  ``ang_vel_z_only`` replaces the term's
+  function with :func:`ame.mdp.rewards.track_ang_vel_z_world_exp` on the
+  root link (pelvis): exp(-(wz_cmd - wz_world)^2 / std^2), yaw rate only,
+  world frame (mjlab's adds the body-frame roll and pitch rates to the
+  error); the term keeps its name, ``std`` and weight (both overridable
+  above)."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   if heading_command:
     apply_heading_commands(cfg)
@@ -351,6 +359,14 @@ def ame_gap_env_cfg(
   else:
     apply_patch_spawn(cfg)
   add_tracking_metrics(cfg)
+  if ang_vel_z_only:
+    term = cfg.rewards["track_angular_velocity"]
+    term.func = ame_rew.track_ang_vel_z_world_exp
+    term.params = {
+      "command_name": term.params["command_name"],
+      "std": term.params["std"],
+      "asset_cfg": SceneEntityCfg("robot"),  # no body names: the root link
+    }
   if ang_vel_std is not None:
     cfg.rewards["track_angular_velocity"].params["std"] = ang_vel_std
   if ang_vel_weight is not None:

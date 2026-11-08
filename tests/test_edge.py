@@ -16,6 +16,7 @@ EDGE_TASK = "Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1"
 SGS_TASK = "Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1"
 ANGSTD_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1"
 ANGW4_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1"
+ANGW4Z_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1"
 ROOT_Z = 0.76  # the stub robot's default root height above the ground
 
 
@@ -392,6 +393,68 @@ def test_ang_vel_weight_default_changes_nothing() -> None:
 
   norm = lambda x: re.sub(r" at 0x[0-9a-f]+", "", repr(x))  # noqa: E731
   assert norm(ame_gap_env_cfg()) == norm(ame_gap_env_cfg(ang_vel_weight=None))
+
+
+def test_angw4z_task_differs_from_edge_only_in_the_yaw_term() -> None:
+  from mjlab.managers.scene_entity_config import SceneEntityCfg
+  from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
+  from mjlab.tasks.velocity.mdp.rewards import track_angular_velocity
+
+  import ame  # noqa: F401
+  from ame.mdp.rewards import track_ang_vel_z_world_exp
+
+  assert ANGW4Z_TASK in list_tasks()
+  norm = lambda x: re.sub(r" at 0x[0-9a-f]+", "", repr(x))  # noqa: E731
+  for play in (False, True):
+    edge = load_env_cfg(EDGE_TASK, play=play)
+    z = load_env_cfg(ANGW4Z_TASK, play=play)
+    old, new = edge.rewards["track_angular_velocity"], z.rewards["track_angular_velocity"]
+    assert old.func is track_angular_velocity and old.weight == 2.0
+    assert new.func is track_ang_vel_z_world_exp
+    assert new.weight == 4.0
+    assert new.params["std"] == old.params["std"] == math.sqrt(0.5)
+    assert new.params["command_name"] == old.params["command_name"] == "twist"
+    # the root link (pelvis): an entity cfg with no body names
+    assert new.params["asset_cfg"] == SceneEntityCfg("robot")
+    assert new.params["asset_cfg"].body_names is None
+    # every other reward term identical, body_ang_vel included
+    assert edge.rewards.keys() == z.rewards.keys()
+    assert z.rewards["body_ang_vel"].weight == -0.05
+    for name in edge.rewards:
+      if name != "track_angular_velocity":
+        assert norm(edge.rewards[name]) == norm(z.rewards[name]), name
+    # and nothing else in the config differs
+    edge.rewards["track_angular_velocity"] = new
+    assert norm(edge) == norm(z)
+  assert norm(load_rl_cfg(EDGE_TASK)) == norm(load_rl_cfg(ANGW4Z_TASK))
+
+
+def test_ang_vel_z_only_default_changes_nothing() -> None:
+  from ame.env_cfg import ame_gap_env_cfg
+
+  norm = lambda x: re.sub(r" at 0x[0-9a-f]+", "", repr(x))  # noqa: E731
+  assert norm(ame_gap_env_cfg()) == norm(ame_gap_env_cfg(ang_vel_z_only=False))
+
+
+def test_track_ang_vel_z_world_exp_uses_world_yaw_rate_of_the_root() -> None:
+  from types import SimpleNamespace
+
+  from mjlab.managers.scene_entity_config import SceneEntityCfg
+
+  from ame.mdp.rewards import track_ang_vel_z_world_exp
+
+  root_w = torch.tensor([[0.3, -0.2, 0.5], [0.0, 0.0, -1.0]])
+  body_w = torch.full((2, 3, 3), 9.0)  # would give a different answer if a body were read
+  data = SimpleNamespace(root_link_ang_vel_w=root_w, body_link_ang_vel_w=body_w)
+  cmd = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])
+  env = SimpleNamespace(
+    scene={"robot": SimpleNamespace(data=data)},
+    command_manager=SimpleNamespace(get_command=lambda name: cmd),
+  )
+  out = track_ang_vel_z_world_exp(env, std=math.sqrt(0.5), command_name="twist", asset_cfg=SceneEntityCfg("robot"))
+  # only the z error counts: roll / pitch rates (0.3, -0.2) do not enter
+  want = torch.exp(-torch.tensor([(1.0 - 0.5) ** 2, 0.0]) / 0.5)
+  assert torch.allclose(out, want)
 
 
 def test_edge_distance_needs_sgs() -> None:

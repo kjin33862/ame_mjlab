@@ -32,7 +32,11 @@ reused on other tasks.  Importing the package (mjlab does it through the
   (``ang_vel_std``);
 * ``Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1`` — the edge SGS task
   with the ``track_angular_velocity`` reward's weight at 4.0 instead of 2.0
-  (``ang_vel_weight``; std stays mjlab's ``sqrt(0.5)``).
+  (``ang_vel_weight``; std stays mjlab's ``sqrt(0.5)``);
+* ``Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1`` — the AngW4 task with
+  the yaw term made yaw-rate only: ``track_ang_vel_z_world_exp`` on the
+  pelvis (world frame, no roll / pitch in the error), std ``sqrt(0.5)``,
+  weight 4.0 (``ang_vel_z_only``).
 
 Train / play with mjlab's own CLIs::
 
@@ -172,6 +176,28 @@ register_mjlab_task(
     heading_command=True,
     sgs=True,
     ang_vel_weight=4.0,
+  ),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
   ),
   rl_cfg=ame_symmetric_ppo_runner_cfg(),
 )

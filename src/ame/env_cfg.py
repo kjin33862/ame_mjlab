@@ -321,6 +321,7 @@ def ame_gap_env_cfg(
   centre_spawn: bool = False,
   edge_distance: float | None = None,
   ang_vel_std: float | None = None,
+  ang_vel_weight: float | None = None,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -338,7 +339,8 @@ def ame_gap_env_cfg(
   ``edge_distance`` (with ``sgs``) makes first passage to that Chebyshev
   distance SGS's success signal (``apply_edge_success``).  ``ang_vel_std``,
   if set, replaces the ``track_angular_velocity`` reward's ``std`` (``None``
-  keeps mjlab's)."""
+  keeps mjlab's); ``ang_vel_weight``, if set, replaces that term's weight
+  (``None`` keeps mjlab's 2.0)."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   if heading_command:
     apply_heading_commands(cfg)
@@ -351,6 +353,8 @@ def ame_gap_env_cfg(
   add_tracking_metrics(cfg)
   if ang_vel_std is not None:
     cfg.rewards["track_angular_velocity"].params["std"] = ang_vel_std
+  if ang_vel_weight is not None:
+    cfg.rewards["track_angular_velocity"].weight = ang_vel_weight
   if not play:
     apply_terrain_floor(cfg, command_name="twist", **{**GAP_CURRICULUM, "rule": rule})
     if sgs:

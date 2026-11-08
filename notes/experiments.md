@@ -15,6 +15,7 @@ command): `matrix_plots/matrix_summary.csv` (open loop) and `goal_plots/goal_sum
 | gap_progress_heading_alphanist_1024 | sgs | run/gap_progress_heading_alphanist_1024 | Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-ProgressHeading-AlphaNIST-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_progress_heading_alphanist_1024 --agent.logger tensorboard` | |
 | gap_edge_sgs_1024 | sgs | run/gap_edge_sgs_1024 | Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_1024 --agent.logger tensorboard` | |
 | gap_edge_sgs_angstd_1024 | sgs | run/gap_edge_sgs_angstd_1024 | Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angstd_1024 --agent.logger tensorboard` | |
+| gap_edge_sgs_angw4_1024 | sgs | run/gap_edge_sgs_angw4_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angw4_1024 --agent.logger tensorboard` | |
 
 gap_1024 and gap_1024_s43 have no tag and no recorded commit; the branch is inferred from the task (the gap task
 first appeared in `49a85ca`). Their commands are reconstructed from `checkpoints/<run>/params/agent.yaml`.
@@ -80,3 +81,13 @@ sqrt(0.5) ≈ 0.707 (`ame_gap_env_cfg(ang_vel_std=...)`; weight 2.0 unchanged, e
 identical). The reward is exp(-e / std²) with e = (ω_z,cmd − ω_z)² + ω_x² + ω_y² (body frame, so roll and
 pitch rates count too), so std² halves from 0.5 to 0.25: an error that earned exp(-1) before now earns exp(-2).
 The play config gets the same std.
+
+## gap_edge_sgs_angw4_1024: double weight on yaw-rate tracking
+
+Same as gap_edge_sgs_1024 (spawn, edge success D = 3.75 m, SGS H = 100, t = 0.66, κ = 5, T = 2, eps = 1e-8,
+commands, board, PPO) except the `track_angular_velocity` reward's weight: 4.0 instead of mjlab's 2.0
+(`ame_gap_env_cfg(ang_vel_weight=...)`; std stays sqrt(0.5), every other reward term identical). Motivation: in
+goal-mode play on pyramid_stairs_inv d0.5, gap_edge_sgs_1024 (model_9999) carries a large yaw-rate error
+(mean (ω_z,cmd − ω_z)² ≈ 1.0 over 192 robots, 97 % of it on steps with |ω_z,cmd| ≥ 0.3; uncommitted
+analysis on the eval branch). Unlike the AngStd variant this keeps the kernel's shape and only doubles the term
+against the rest of the reward. The play config gets the same weight.

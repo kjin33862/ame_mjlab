@@ -29,7 +29,10 @@ reused on other tasks.  Importing the package (mjlab does it through the
   ``apply_edge_success``, ``EDGE_DISTANCE``);
 * ``Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1`` — the edge SGS task
   with the ``track_angular_velocity`` reward's std at ``sqrt(0.25)``
-  (``ang_vel_std``).
+  (``ang_vel_std``);
+* ``Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1`` — the edge SGS task
+  with the ``track_angular_velocity`` reward's weight at 4.0 instead of 2.0
+  (``ang_vel_weight``; std stays mjlab's ``sqrt(0.5)``).
 
 Train / play with mjlab's own CLIs::
 
@@ -149,6 +152,26 @@ register_mjlab_task(
     heading_command=True,
     sgs=True,
     ang_vel_std=math.sqrt(0.25),
+  ),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_weight=4.0,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_weight=4.0,
   ),
   rl_cfg=ame_symmetric_ppo_runner_cfg(),
 )

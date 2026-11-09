@@ -17,6 +17,7 @@ SGS_TASK = "Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1"
 ANGSTD_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1"
 ANGW4_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1"
 ANGW4Z_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1"
+ANGW4Z_ALPHA_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1"
 ROOT_Z = 0.76  # the stub robot's default root height above the ground
 
 
@@ -427,6 +428,27 @@ def test_angw4z_task_differs_from_edge_only_in_the_yaw_term() -> None:
     edge.rewards["track_angular_velocity"] = new
     assert norm(edge) == norm(z)
   assert norm(load_rl_cfg(EDGE_TASK)) == norm(load_rl_cfg(ANGW4Z_TASK))
+
+
+def test_angw4z_alphanist_task_differs_from_angw4z_only_in_the_sgs_params() -> None:
+  from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
+
+  import ame  # noqa: F401
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS, SGS_PARAMS
+
+  assert ANGW4Z_ALPHA_TASK in list_tasks()
+  norm = lambda x: re.sub(r" at 0x[0-9a-f]+", "", repr(x))  # noqa: E731
+  z = load_env_cfg(ANGW4Z_TASK)
+  alpha = load_env_cfg(ANGW4Z_ALPHA_TASK)
+  assert z.curriculum["terrain_levels"].params["sgs"] == SGS_PARAMS
+  assert alpha.curriculum["terrain_levels"].params["sgs"] == ALPHANIST_SGS_PARAMS
+  alpha.curriculum["terrain_levels"].params["sgs"] = dict(SGS_PARAMS)
+  assert norm(z) == norm(alpha)
+  # play has no SGS: identical configs
+  assert norm(load_env_cfg(ANGW4Z_TASK, play=True)) == norm(
+    load_env_cfg(ANGW4Z_ALPHA_TASK, play=True)
+  )
+  assert norm(load_rl_cfg(ANGW4Z_TASK)) == norm(load_rl_cfg(ANGW4Z_ALPHA_TASK))
 
 
 def test_ang_vel_z_only_default_changes_nothing() -> None:

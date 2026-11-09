@@ -36,7 +36,9 @@ reused on other tasks.  Importing the package (mjlab does it through the
 * ``Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1`` — the AngW4 task with
   the yaw term made yaw-rate only: ``track_ang_vel_z_world_exp`` on the
   pelvis (world frame, no roll / pitch in the error), std ``sqrt(0.5)``,
-  weight 4.0 (``ang_vel_z_only``).
+  weight 4.0 (``ang_vel_z_only``);
+* ``Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1`` — the AngW4Z
+  task with AlphaNIST's sampling parameters (``ALPHANIST_SGS_PARAMS``).
 
 Train / play with mjlab's own CLIs::
 
@@ -186,6 +188,29 @@ register_mjlab_task(
     rule="progress",
     heading_command=True,
     sgs=True,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+  ),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    sgs_params=ALPHANIST_SGS_PARAMS,
     centre_spawn=True,
     edge_distance=EDGE_DISTANCE,
     ang_vel_weight=4.0,

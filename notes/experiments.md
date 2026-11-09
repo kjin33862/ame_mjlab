@@ -17,6 +17,7 @@ command): `matrix_plots/matrix_summary.csv` (open loop) and `goal_plots/goal_sum
 | gap_edge_sgs_angstd_1024 | sgs | run/gap_edge_sgs_angstd_1024 | Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angstd_1024 --agent.logger tensorboard` | |
 | gap_edge_sgs_angw4_1024 | sgs | run/gap_edge_sgs_angw4_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angw4_1024 --agent.logger tensorboard` | |
 | gap_edge_sgs_angw4z_1024 | sgs | run/gap_edge_sgs_angw4z_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angw4z_1024 --agent.logger tensorboard` | |
+| gap_edge_alphanist_angw4z_1024 | sgs | run/gap_edge_alphanist_angw4z_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_alphanist_angw4z_1024 --agent.logger tensorboard` | |
 
 gap_1024 and gap_1024_s43 have no tag and no recorded commit; the branch is inferred from the task (the gap task
 first appeared in `49a85ca`). Their commands are reconstructed from `checkpoints/<run>/params/agent.yaml`.
@@ -104,3 +105,10 @@ reward term, the terminations and the rest of the config are identical to gap_ed
 isolates the roll / pitch coupling: in goal-mode play on pyramid_stairs_inv d0.5, gap_edge_sgs_1024 (model_9999)
 has mean exp(−(ω_x² + ω_y²)/0.5) = 0.73 (0.80 on flat), the factor by which the coupled kernel scales the yaw reward
 and its gradient. The play config gets the same term.
+
+## gap_edge_alphanist_angw4z_1024: AngW4Z with AlphaNIST sampling parameters
+
+Same as gap_edge_sgs_angw4z_1024 except the SGS sampling parameters: `ALPHANIST_SGS_PARAMS` (t = 0.5, κ = 1, T = 1,
+AlphaNIST eq. 4; H = 100 and eps = 1e-8 unchanged) instead of `SGS_PARAMS` (t = 0.66, κ = 5, T = 2), as
+gap_progress_heading_alphanist_1024 is to gap_progress_heading_sgs_1024. Edge success, centre spawn, the yaw-rate-only
+kernel at weight 4.0 and the rest of the config are identical. SGS is training only, so the play config is AngW4Z's.

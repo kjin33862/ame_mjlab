@@ -18,6 +18,8 @@ ANGSTD_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngStd-Velocity-Rough-G1"
 ANGW4_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4-Velocity-Rough-G1"
 ANGW4Z_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1"
 ANGW4Z_ALPHA_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1"
+ANGW4Z_CONTACT_TASK = "Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Velocity-Rough-G1"
+AME_TASK = "Ame-Velocity-Rough-G1"
 ROOT_Z = 0.76  # the stub robot's default root height above the ground
 
 
@@ -484,3 +486,76 @@ def test_edge_distance_needs_sgs() -> None:
 
   with pytest.raises(ValueError, match="sgs=True"):
     ame_gap_env_cfg(rule="progress", edge_distance=3.75)
+
+
+def test_angw4z_contact_task_adds_only_the_ame_contact_package() -> None:
+  """The Contact task is AngW4Z plus Ame-Velocity-Rough-G1's contact package,
+  copied as one unit: the undesired_contact sensor, the illegal_contact
+  termination, undesired_contacts (-1) and termination_penalty (-50, the
+  REBALANCE value, not the base -200).  link_contact_forces is left out."""
+  from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
+
+  import ame  # noqa: F401
+  from ame.reward_cfg import AME2_CONTACT_REWARDS, UNDESIRED_CONTACT_SENSOR
+
+  assert ANGW4Z_CONTACT_TASK in list_tasks()
+  norm = lambda x: re.sub(r" at 0x[0-9a-f]+", "", repr(x))  # noqa: E731
+  for play in (False, True):
+    ame_cfg = load_env_cfg(AME_TASK, play=play)
+    z = load_env_cfg(ANGW4Z_TASK, play=play)
+    c = load_env_cfg(ANGW4Z_CONTACT_TASK, play=play)
+    # rewards: AngW4Z's plus exactly the two contact terms, as the AME task has them
+    assert set(c.rewards) == set(z.rewards) | set(AME2_CONTACT_REWARDS)
+    assert not set(z.rewards) & set(AME2_CONTACT_REWARDS)
+    for name in AME2_CONTACT_REWARDS:
+      assert norm(c.rewards[name]) == norm(ame_cfg.rewards[name]), name
+    assert c.rewards["undesired_contacts"].weight == -1.0
+    assert c.rewards["termination_penalty"].weight == -50.0
+    assert "link_contact_forces" in ame_cfg.rewards
+    assert "link_contact_forces" not in c.rewards
+    for name in z.rewards:
+      assert norm(c.rewards[name]) == norm(z.rewards[name]), name
+    # terminations: AngW4Z's plus the AME task's illegal_contact
+    assert set(c.terminations) == set(z.terminations) | {"illegal_contact"}
+    assert norm(c.terminations["illegal_contact"]) == norm(
+      ame_cfg.terminations["illegal_contact"]
+    )
+    for name in z.terminations:
+      assert norm(c.terminations[name]) == norm(z.terminations[name]), name
+    # sensors: AngW4Z's plus the AME task's undesired_contact sensor
+    zs = {s.name: s for s in z.scene.sensors}
+    cs = {s.name: s for s in c.scene.sensors}
+    ams = {s.name: s for s in ame_cfg.scene.sensors}
+    assert set(cs) == set(zs) | {UNDESIRED_CONTACT_SENSOR}
+    assert norm(cs[UNDESIRED_CONTACT_SENSOR]) == norm(ams[UNDESIRED_CONTACT_SENSOR])
+    # and nothing else in the config differs
+    for name in AME2_CONTACT_REWARDS:
+      c.rewards.pop(name)
+    c.terminations.pop("illegal_contact")
+    c.scene.sensors = tuple(s for s in c.scene.sensors if s.name != UNDESIRED_CONTACT_SENSOR)
+    assert norm(c) == norm(z)
+  assert norm(load_rl_cfg(ANGW4Z_TASK)) == norm(load_rl_cfg(ANGW4Z_CONTACT_TASK))
+
+
+def test_illegal_contact_covers_the_20_non_foot_bodies() -> None:
+  """The illegal-contact sensor matches 20 G1 bodies (pelvis, torso, waist,
+  hips, knees, shoulders, elbows), not the torso alone as in the AME paper;
+  ankles and wrists are excluded."""
+  import mujoco
+  from mjlab.asset_zoo.robots.unitree_g1.g1_constants import get_spec
+
+  from ame.reward_cfg import NON_FOOT_LINK_RE
+
+  model = get_spec().compile()
+  names = [mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, i) for i in range(model.nbody)]
+  hit = [n for n in names if n and any(re.fullmatch(p, n) for p in NON_FOOT_LINK_RE)]
+  assert len(hit) == 20
+  assert "pelvis" in hit and "torso_link" in hit
+  assert not any("ankle" in n or "wrist" in n for n in hit)
+
+
+def test_ame_contact_default_changes_nothing() -> None:
+  from ame.env_cfg import ame_gap_env_cfg
+
+  norm = lambda x: re.sub(r" at 0x[0-9a-f]+", "", repr(x))  # noqa: E731
+  assert norm(ame_gap_env_cfg()) == norm(ame_gap_env_cfg(ame_contact=False))

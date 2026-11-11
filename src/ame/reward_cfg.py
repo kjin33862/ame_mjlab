@@ -257,14 +257,43 @@ def rebalance(terms: dict) -> dict:
   return terms
 
 
-def apply_ame2_rewards(
-  cfg: ManagerBasedRlEnvCfg, rbf_weight: float = 1.0, rbf_std: float = 0.5
-) -> None:
-  """Swap mjlab's G1 velocity rewards for the AME-2 stack, in place."""
+def _add_undesired_contact_sensor(cfg: ManagerBasedRlEnvCfg) -> None:
   sensors = list(cfg.scene.sensors or ())
   if not any(getattr(s, "name", None) == UNDESIRED_CONTACT_SENSOR for s in sensors):
     sensors.append(undesired_contact_sensor_cfg())
     cfg.scene.sensors = tuple(sensors)
+
+
+def illegal_contact_term() -> DoneTerm:
+  """The reference's illegal (non-foot) contact termination."""
+  return DoneTerm(
+    func=illegal_contact,
+    params={"sensor_name": UNDESIRED_CONTACT_SENSOR, "threshold": 1.0},
+  )
+
+
+AME2_CONTACT_REWARDS = ("undesired_contacts", "termination_penalty")
+"""The contact-related terms of the ``ame2_rebalanced`` stack."""
+
+
+def apply_ame2_contact(cfg: ManagerBasedRlEnvCfg) -> None:
+  """Add the AME task's contact package to another reward stack, in place:
+  the ``undesired_contact`` sensor, the ``illegal_contact`` termination and the
+  :data:`AME2_CONTACT_REWARDS` terms exactly as ``ame2_rebalanced`` (the
+  Ame-Velocity-Rough-G1 stack) defines them.  Every other reward and
+  termination is kept."""
+  _add_undesired_contact_sensor(cfg)
+  ame = rebalance(ame2_rewards())
+  for name in AME2_CONTACT_REWARDS:
+    cfg.rewards[name] = ame[name]
+  cfg.terminations["illegal_contact"] = illegal_contact_term()
+
+
+def apply_ame2_rewards(
+  cfg: ManagerBasedRlEnvCfg, rbf_weight: float = 1.0, rbf_std: float = 0.5
+) -> None:
+  """Swap mjlab's G1 velocity rewards for the AME-2 stack, in place."""
+  _add_undesired_contact_sensor(cfg)
 
   cfg.rewards = ame2_rewards(rbf_weight=rbf_weight, rbf_std=rbf_std)
 
@@ -277,10 +306,7 @@ def apply_ame2_rewards(
   # explosion feeds poisoned rewards for whole episodes and can destroy the
   # value function.
   cfg.terminations = {
-    "illegal_contact": DoneTerm(
-      func=illegal_contact,
-      params={"sensor_name": UNDESIRED_CONTACT_SENSOR, "threshold": 1.0},
-    ),
+    "illegal_contact": illegal_contact_term(),
     "bad_orientation": DoneTerm(func=bad_orientation),
     "physics_blowup": DoneTerm(func=physics_blowup),
   }
@@ -289,11 +315,14 @@ def apply_ame2_rewards(
 
 
 __all__ = [
+  "AME2_CONTACT_REWARDS",
   "EXTRA_TERMS",
   "FEET_CONTACT_SENSOR",
   "REBALANCE",
   "UNDESIRED_CONTACT_SENSOR",
   "ame2_rewards",
+  "apply_ame2_contact",
   "apply_ame2_rewards",
+  "illegal_contact_term",
   "undesired_contact_sensor_cfg",
 ]

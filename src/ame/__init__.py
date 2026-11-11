@@ -38,7 +38,10 @@ reused on other tasks.  Importing the package (mjlab does it through the
   pelvis (world frame, no roll / pitch in the error), std ``sqrt(0.5)``,
   weight 4.0 (``ang_vel_z_only``);
 * ``Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1`` — the AngW4Z
-  task with AlphaNIST's sampling parameters (``ALPHANIST_SGS_PARAMS``).
+  task with AlphaNIST's sampling parameters (``ALPHANIST_SGS_PARAMS``);
+* ``Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Velocity-Rough-G1`` — the AngW4Z
+  task plus the AME task's contact package (``ame_contact``: illegal-contact
+  termination, ``undesired_contacts`` and ``termination_penalty``).
 
 Train / play with mjlab's own CLIs::
 
@@ -223,6 +226,30 @@ register_mjlab_task(
     sgs=True,
     ang_vel_weight=4.0,
     ang_vel_z_only=True,
+  ),
+  rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
   ),
   rl_cfg=ame_symmetric_ppo_runner_cfg(),
 )

@@ -58,7 +58,7 @@ from ame.mdp.metrics import (
   pelvis_yaw_error,
 )
 from ame.mdp.sgs import SGS_PARAMS, terrain_levels_sgs, terrain_levels_sgs_edge
-from ame.reward_cfg import apply_ame2_rewards, rebalance
+from ame.reward_cfg import apply_ame2_contact, apply_ame2_rewards, rebalance
 from ame.scan import apply_scan
 from ame.terrains import (
   ame_terrains_cfg,
@@ -325,6 +325,7 @@ def ame_gap_env_cfg(
   ang_vel_std: float | None = None,
   ang_vel_weight: float | None = None,
   ang_vel_z_only: bool = False,
+  ame_contact: bool = False,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -348,7 +349,10 @@ def ame_gap_env_cfg(
   root link (pelvis): exp(-(wz_cmd - wz_world)^2 / std^2), yaw rate only,
   world frame (mjlab's adds the body-frame roll and pitch rates to the
   error); the term keeps its name, ``std`` and weight (both overridable
-  above)."""
+  above).  ``ame_contact`` adds the AME task's contact package
+  (:func:`ame.reward_cfg.apply_ame2_contact`: ``undesired_contact`` sensor,
+  ``illegal_contact`` termination, ``undesired_contacts`` and
+  ``termination_penalty`` rewards) to mjlab's rewards."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   if heading_command:
     apply_heading_commands(cfg)
@@ -371,6 +375,8 @@ def ame_gap_env_cfg(
     cfg.rewards["track_angular_velocity"].params["std"] = ang_vel_std
   if ang_vel_weight is not None:
     cfg.rewards["track_angular_velocity"].weight = ang_vel_weight
+  if ame_contact:
+    apply_ame2_contact(cfg)
   if not play:
     apply_terrain_floor(cfg, command_name="twist", **{**GAP_CURRICULUM, "rule": rule})
     if sgs:

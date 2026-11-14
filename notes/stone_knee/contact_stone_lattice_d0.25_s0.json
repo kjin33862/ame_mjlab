@@ -1,0 +1,1371 @@
+[
+{
+"env": 0,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 3.46,
+"sole_z_lr": [
+0.026,
+-0.228
+],
+"knee_z_lr": [
+0.162,
+0.102
+],
+"pelvis_z": 0.564,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 1,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.16,
+"sole_z_lr": [
+0.054,
+-0.163
+],
+"knee_z_lr": [
+0.248,
+0.186
+],
+"pelvis_z": 0.638,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 2,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.56,
+"sole_z_lr": [
+0.005,
+-0.174
+],
+"knee_z_lr": [
+0.254,
+0.177
+],
+"pelvis_z": 0.638,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 3,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 2.52,
+"sole_z_lr": [
+0.018,
+-0.22
+],
+"knee_z_lr": [
+0.187,
+0.1
+],
+"pelvis_z": 0.566,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 4,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.7,
+"sole_z_lr": [
+-0.192,
+0.003
+],
+"knee_z_lr": [
+0.134,
+0.215
+],
+"pelvis_z": 0.597,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 5,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 4.72,
+"sole_z_lr": [
+-0.215,
+0.006
+],
+"knee_z_lr": [
+0.104,
+0.214
+],
+"pelvis_z": 0.574,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 6,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 3.3,
+"sole_z_lr": [
+-0.235,
+0.017
+],
+"knee_z_lr": [
+0.074,
+0.172
+],
+"pelvis_z": 0.541,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 7,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 3.04,
+"sole_z_lr": [
+-0.003,
+-0.171
+],
+"knee_z_lr": [
+0.264,
+0.181
+],
+"pelvis_z": 0.642,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 8,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.7,
+"sole_z_lr": [
+0.008,
+-0.222
+],
+"knee_z_lr": [
+0.213,
+0.089
+],
+"pelvis_z": 0.559,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 9,
+"hit": false,
+"fell": false,
+"foot_in_pit_ever": [
+false,
+false
+]
+},
+{
+"env": 10,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 1.42,
+"sole_z_lr": [
+-0.056,
+-0.026
+],
+"knee_z_lr": [
+0.256,
+0.295
+],
+"pelvis_z": 0.695,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 11,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 7.46,
+"sole_z_lr": [
+0.006,
+-0.218
+],
+"knee_z_lr": [
+0.182,
+0.085
+],
+"pelvis_z": 0.55,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 12,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.22,
+"sole_z_lr": [
+0.057,
+-0.261
+],
+"knee_z_lr": [
+0.134,
+0.073
+],
+"pelvis_z": 0.535,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 13,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 3.3,
+"sole_z_lr": [
+0.03,
+-0.166
+],
+"knee_z_lr": [
+0.253,
+0.18
+],
+"pelvis_z": 0.64,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 14,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.14,
+"sole_z_lr": [
+0.038,
+-0.16
+],
+"knee_z_lr": [
+0.266,
+0.185
+],
+"pelvis_z": 0.639,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 15,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.8,
+"sole_z_lr": [
+-0.225,
+0.005
+],
+"knee_z_lr": [
+0.109,
+0.197
+],
+"pelvis_z": 0.574,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 16,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.18,
+"sole_z_lr": [
+0.063,
+-0.189
+],
+"knee_z_lr": [
+0.216,
+0.154
+],
+"pelvis_z": 0.612,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 17,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 4.78,
+"sole_z_lr": [
+0.028,
+-0.211
+],
+"knee_z_lr": [
+0.174,
+0.061
+],
+"pelvis_z": 0.53,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 18,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.34,
+"sole_z_lr": [
+-0.266,
+0.052
+],
+"knee_z_lr": [
+0.034,
+0.132
+],
+"pelvis_z": 0.505,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 19,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.62,
+"sole_z_lr": [
+0.0,
+-0.159
+],
+"knee_z_lr": [
+0.225,
+0.115
+],
+"pelvis_z": 0.581,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 20,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 2.94,
+"sole_z_lr": [
+-0.094,
+-0.001
+],
+"knee_z_lr": [
+0.0,
+0.07
+],
+"pelvis_z": 0.447,
+"same_side_foot_in_pit": false,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 21,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.22,
+"sole_z_lr": [
+-0.202,
+0.043
+],
+"knee_z_lr": [
+0.143,
+0.198
+],
+"pelvis_z": 0.601,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 22,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.62,
+"sole_z_lr": [
+0.018,
+-0.164
+],
+"knee_z_lr": [
+0.262,
+0.185
+],
+"pelvis_z": 0.646,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": false
+},
+{
+"env": 23,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 1.34,
+"sole_z_lr": [
+0.006,
+-0.043
+],
+"knee_z_lr": [
+0.158,
+0.101
+],
+"pelvis_z": 0.532,
+"same_side_foot_in_pit": false,
+"any_foot_in_pit": false,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 24,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.24,
+"sole_z_lr": [
+-0.167,
+0.058
+],
+"knee_z_lr": [
+0.185,
+0.248
+],
+"pelvis_z": 0.643,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 25,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.16,
+"sole_z_lr": [
+0.056,
+-0.16
+],
+"knee_z_lr": [
+0.255,
+0.189
+],
+"pelvis_z": 0.642,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 26,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.68,
+"sole_z_lr": [
+-0.24,
+0.012
+],
+"knee_z_lr": [
+0.081,
+0.196
+],
+"pelvis_z": 0.551,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 27,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 2.52,
+"sole_z_lr": [
+0.015,
+-0.188
+],
+"knee_z_lr": [
+0.207,
+0.15
+],
+"pelvis_z": 0.607,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 28,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.2,
+"sole_z_lr": [
+-0.003,
+-0.166
+],
+"knee_z_lr": [
+0.257,
+0.185
+],
+"pelvis_z": 0.63,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 29,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 4.56,
+"sole_z_lr": [
+-0.177,
+0.013
+],
+"knee_z_lr": [
+0.168,
+0.238
+],
+"pelvis_z": 0.629,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 30,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.7,
+"sole_z_lr": [
+0.021,
+-0.265
+],
+"knee_z_lr": [
+0.188,
+0.05
+],
+"pelvis_z": 0.522,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 31,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.68,
+"sole_z_lr": [
+-0.183,
+0.0
+],
+"knee_z_lr": [
+0.145,
+0.24
+],
+"pelvis_z": 0.61,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 32,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.54,
+"sole_z_lr": [
+0.009,
+-0.156
+],
+"knee_z_lr": [
+0.268,
+0.192
+],
+"pelvis_z": 0.647,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 33,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 2.44,
+"sole_z_lr": [
+0.026,
+-0.164
+],
+"knee_z_lr": [
+0.264,
+0.186
+],
+"pelvis_z": 0.647,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 34,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.42,
+"sole_z_lr": [
+0.009,
+-0.146
+],
+"knee_z_lr": [
+0.28,
+0.199
+],
+"pelvis_z": 0.644,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 35,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.76,
+"sole_z_lr": [
+-0.203,
+0.005
+],
+"knee_z_lr": [
+0.128,
+0.202
+],
+"pelvis_z": 0.59,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 36,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 2.96,
+"sole_z_lr": [
+0.033,
+-0.155
+],
+"knee_z_lr": [
+0.25,
+0.194
+],
+"pelvis_z": 0.651,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 37,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 1.82,
+"sole_z_lr": [
+-0.198,
+0.017
+],
+"knee_z_lr": [
+0.053,
+0.201
+],
+"pelvis_z": 0.524,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 38,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 2.96,
+"sole_z_lr": [
+-0.0,
+-0.169
+],
+"knee_z_lr": [
+0.244,
+0.18
+],
+"pelvis_z": 0.636,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 39,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.58,
+"sole_z_lr": [
+0.018,
+-0.284
+],
+"knee_z_lr": [
+0.189,
+0.051
+],
+"pelvis_z": 0.525,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 40,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.28,
+"sole_z_lr": [
+0.002,
+-0.157
+],
+"knee_z_lr": [
+0.26,
+0.189
+],
+"pelvis_z": 0.633,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 41,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 1.56,
+"sole_z_lr": [
+-0.142,
+0.016
+],
+"knee_z_lr": [
+0.197,
+0.237
+],
+"pelvis_z": 0.644,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 42,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 2.52,
+"sole_z_lr": [
+0.041,
+-0.172
+],
+"knee_z_lr": [
+0.242,
+0.176
+],
+"pelvis_z": 0.637,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 43,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.22,
+"sole_z_lr": [
+0.016,
+-0.269
+],
+"knee_z_lr": [
+0.182,
+0.072
+],
+"pelvis_z": 0.538,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 44,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 1.28,
+"sole_z_lr": [
+-0.157,
+0.003
+],
+"knee_z_lr": [
+0.189,
+0.29
+],
+"pelvis_z": 0.637,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 45,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.5,
+"sole_z_lr": [
+-0.004,
+-0.077
+],
+"knee_z_lr": [
+0.293,
+0.241
+],
+"pelvis_z": 0.688,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 46,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 4.28,
+"sole_z_lr": [
+0.052,
+0.096
+],
+"knee_z_lr": [
+0.046,
+0.109
+],
+"pelvis_z": 0.47,
+"same_side_foot_in_pit": false,
+"any_foot_in_pit": false,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 47,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.7,
+"sole_z_lr": [
+-0.157,
+0.012
+],
+"knee_z_lr": [
+0.189,
+0.254
+],
+"pelvis_z": 0.648,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 48,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.48,
+"sole_z_lr": [
+0.005,
+-0.143
+],
+"knee_z_lr": [
+0.279,
+0.203
+],
+"pelvis_z": 0.653,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 49,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 1.3,
+"sole_z_lr": [
+0.001,
+-0.084
+],
+"knee_z_lr": [
+0.152,
+0.074
+],
+"pelvis_z": 0.52,
+"same_side_foot_in_pit": false,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 50,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 3.16,
+"sole_z_lr": [
+-0.207,
+0.013
+],
+"knee_z_lr": [
+0.108,
+0.203
+],
+"pelvis_z": 0.573,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 51,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 2.56,
+"sole_z_lr": [
+0.007,
+-0.192
+],
+"knee_z_lr": [
+0.211,
+0.143
+],
+"pelvis_z": 0.604,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 52,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 3.84,
+"sole_z_lr": [
+0.019,
+-0.162
+],
+"knee_z_lr": [
+0.26,
+0.188
+],
+"pelvis_z": 0.649,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 53,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.32,
+"sole_z_lr": [
+-0.015,
+-0.143
+],
+"knee_z_lr": [
+0.249,
+0.201
+],
+"pelvis_z": 0.635,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 54,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 4.42,
+"sole_z_lr": [
+-0.205,
+0.011
+],
+"knee_z_lr": [
+0.133,
+0.214
+],
+"pelvis_z": 0.598,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+true
+],
+"fell": true
+},
+{
+"env": 55,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.2,
+"sole_z_lr": [
+-0.005,
+-0.172
+],
+"knee_z_lr": [
+0.259,
+0.179
+],
+"pelvis_z": 0.628,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 56,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 2.3,
+"sole_z_lr": [
+-0.219,
+0.015
+],
+"knee_z_lr": [
+0.126,
+0.179
+],
+"pelvis_z": 0.582,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 57,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 3.94,
+"sole_z_lr": [
+0.026,
+-0.153
+],
+"knee_z_lr": [
+0.249,
+0.188
+],
+"pelvis_z": 0.647,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": false
+},
+{
+"env": 58,
+"hit": true,
+"body": "left_knee_link",
+"t_s": 4.64,
+"sole_z_lr": [
+-0.199,
+0.01
+],
+"knee_z_lr": [
+0.12,
+0.199
+],
+"pelvis_z": 0.582,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 59,
+"hit": false,
+"fell": false,
+"foot_in_pit_ever": [
+false,
+false
+]
+},
+{
+"env": 60,
+"hit": true,
+"body": "left_hip_yaw_link",
+"t_s": 2.34,
+"sole_z_lr": [
+-0.261,
+0.011
+],
+"knee_z_lr": [
+0.034,
+0.115
+],
+"pelvis_z": 0.501,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+true,
+false
+],
+"fell": true
+},
+{
+"env": 61,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 3.04,
+"sole_z_lr": [
+0.005,
+-0.178
+],
+"knee_z_lr": [
+0.155,
+0.116
+],
+"pelvis_z": 0.568,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 62,
+"hit": true,
+"body": "right_knee_link",
+"t_s": 1.34,
+"sole_z_lr": [
+0.032,
+-0.261
+],
+"knee_z_lr": [
+0.168,
+0.074
+],
+"pelvis_z": 0.543,
+"same_side_foot_in_pit": true,
+"any_foot_in_pit": true,
+"foot_pit_before_hit": [
+false,
+true
+],
+"fell": true
+},
+{
+"env": 63,
+"hit": false,
+"fell": false,
+"foot_in_pit_ever": [
+false,
+false
+]
+}
+]

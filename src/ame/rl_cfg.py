@@ -65,6 +65,17 @@ class PpoWithSymmetryCfg(RslRlPpoAlgorithmCfg):
 
 
 @dataclass
+class DoubleCriticPpoCfg(PpoWithSymmetryCfg):
+  """:class:`ame.double_critic.DoubleCriticPPO`: one value head per reward group
+  (group 2 = ``reward_group_terms``, group 1 = every other term), per-group GAE
+  and normalisation, ``A = w1 * A1 + w2 * A2`` (``advantage_weights``)."""
+
+  reward_group_terms: tuple[str, ...] = ("foothold",)
+  advantage_weights: tuple[float, float] = (1.0, 0.25)
+  class_name: str = "ame.double_critic:DoubleCriticPPO"
+
+
+@dataclass
 class DeltaModelCfg(RslRlModelCfg):
   """Model cfg + DELTA encoder knobs (delivered to ``DeltaModel`` as kwargs).
 
@@ -166,6 +177,24 @@ def ame_symmetric_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return cfg
 
 
+def double_critic_ppo_runner_cfg(
+  reward_group_terms: tuple[str, ...] = ("foothold",),
+  advantage_weights: tuple[float, float] = (1.0, 0.25),
+) -> RslRlOnPolicyRunnerCfg:
+  """:func:`ame_symmetric_ppo_runner_cfg` with the BeamDojo double critic
+  (:class:`DoubleCriticPpoCfg`); every other PPO / model setting identical.
+  Needs an env whose reward manager has the ``reward_group_terms``."""
+  cfg = ame_symmetric_ppo_runner_cfg()
+  alg = dataclasses.asdict(cfg.algorithm)
+  alg.pop("class_name")
+  cfg.algorithm = DoubleCriticPpoCfg(
+    **alg,
+    reward_group_terms=tuple(reward_group_terms),
+    advantage_weights=(float(advantage_weights[0]), float(advantage_weights[1])),
+  )
+  return cfg
+
+
 def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return RslRlOnPolicyRunnerCfg(
     actor=AmeModelCfg(
@@ -216,8 +245,10 @@ __all__ = [
   "NUM_MINI_BATCHES",
   "AmeModelCfg",
   "DeltaModelCfg",
+  "DoubleCriticPpoCfg",
   "PpoWithSymmetryCfg",
   "ame_ppo_runner_cfg",
   "ame_symmetric_ppo_runner_cfg",
   "delta_ppo_runner_cfg",
+  "double_critic_ppo_runner_cfg",
 ]

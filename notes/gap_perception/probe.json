@@ -1,0 +1,349 @@
+{
+ "cfgs": {
+  "train": {
+   "sensor_frame": "body:pelvis",
+   "pattern": "GridPatternCfg(size=(1.6, 1.0), resolution=0.05)",
+   "ray_alignment": "yaw",
+   "max_distance": 5.0,
+   "include_geom_groups": [
+    0
+   ],
+   "exclude_parent_body": true,
+   "term_func": "elevation_map",
+   "term_params": {
+    "sensor_name": "terrain_scan",
+    "noise": true
+   },
+   "term_scale": null,
+   "term_clip": null,
+   "term_noise": "None",
+   "term_delay": 0,
+   "group_enable_corruption": false,
+   "group_history_length": null,
+   "actor_groups_has_map": true
+  },
+  "play": {
+   "sensor_frame": "body:pelvis",
+   "pattern": "GridPatternCfg(size=(1.6, 1.0), resolution=0.05)",
+   "ray_alignment": "yaw",
+   "max_distance": 5.0,
+   "include_geom_groups": [
+    0
+   ],
+   "exclude_parent_body": true,
+   "term_func": "elevation_map",
+   "term_params": {
+    "sensor_name": "terrain_scan",
+    "noise": false
+   },
+   "term_scale": null,
+   "term_clip": null,
+   "term_noise": "None",
+   "term_delay": 0,
+   "group_enable_corruption": false,
+   "group_history_length": null,
+   "actor_groups_has_map": true
+  }
+ },
+ "stepping_stones_d0.5": {
+  "tile": "stepping_stones d0.5",
+  "placement": "central platform, pelvis 0.84 m ahead of its centre (toes ~1 cm short of its +x edge)",
+  "pelvis_z_above_ground_m": 0.76,
+  "sensor_pos_minus_pelvis_m": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "torso_link_z_minus_pelvis_m": 0.044,
+  "robot_geoms_in_group0": 0,
+  "terrain_geoms": {
+   "pit_floor_boxes_top_bottom": [
+    [
+     -1.9999999999999998,
+     -2.0999999999999996
+    ]
+   ],
+   "n_column_boxes": 169,
+   "column_top_z_min_max": [
+    0.0,
+    0.22470133856049923
+   ],
+   "column_bottom_z_min_max": [
+    -2.0,
+    -1.0
+   ],
+   "column_sizes_min_max_m": [
+    0.25,
+    28.0
+   ]
+  },
+  "n_points": 693,
+  "n_stone_points": 571,
+  "n_gap_points": 122,
+  "n_other_points": 0,
+  "misses": 0,
+  "gap_ray_hit_z_world": {
+   "n": 122,
+   "mean": -2.0,
+   "std": 0.0,
+   "min": -2.0,
+   "p01": -2.0,
+   "p99": -2.0,
+   "max": -2.0
+  },
+  "gap_ray_distance": {
+   "n": 122,
+   "mean": 2.96,
+   "std": 0.0,
+   "min": 2.96,
+   "p01": 2.96,
+   "p99": 2.96,
+   "max": 2.96
+  },
+  "gap_ray_normal_z": {
+   "n": 122,
+   "mean": 1.0,
+   "std": 0.0,
+   "min": 1.0,
+   "p01": 1.0,
+   "p99": 1.0,
+   "max": 1.0
+  },
+  "true_rel_stone": {
+   "n": 571,
+   "mean": -0.7595,
+   "std": 0.007,
+   "min": -0.7788,
+   "p01": -0.7721,
+   "p99": -0.7423,
+   "max": -0.7423
+  },
+  "true_rel_gap": {
+   "n": 122,
+   "mean": -2.96,
+   "std": 0.0,
+   "min": -2.96,
+   "p01": -2.96,
+   "p99": -2.96,
+   "max": -2.96
+  },
+  "obs_clean_stone": {
+   "n": 571,
+   "mean": -0.7595,
+   "std": 0.007,
+   "min": -0.7788,
+   "p01": -0.7721,
+   "p99": -0.7423,
+   "max": -0.7423
+  },
+  "obs_clean_gap": {
+   "n": 122,
+   "mean": -1.2,
+   "std": 0.0,
+   "min": -1.2,
+   "p01": -1.2,
+   "p99": -1.2,
+   "max": -1.2
+  },
+  "obs_clean_minus_true_stone_max_abs": 0.0,
+  "obs_noisy_stone": {
+   "n": 285500,
+   "mean": -0.7801,
+   "std": 0.1002,
+   "min": -1.2,
+   "p01": -1.2,
+   "p99": -0.6661,
+   "max": -0.5875
+  },
+  "obs_noisy_gap": {
+   "n": 61000,
+   "mean": -1.1059,
+   "std": 0.1823,
+   "min": -1.2,
+   "p01": -1.2,
+   "p99": -0.6839,
+   "max": -0.6077
+  },
+  "noisy_threshold_mid_m": -0.9797,
+  "noisy_stone_cells_below_mid": 0.0453,
+  "noisy_gap_cells_above_mid": 0.2125,
+  "no_drift_noisy_stone": {
+   "n": 285500,
+   "mean": -0.7611,
+   "std": 0.0422,
+   "min": -0.9272,
+   "p01": -0.8553,
+   "p99": -0.6653,
+   "max": -0.5717
+  },
+  "no_drift_noisy_gap": {
+   "n": 61000,
+   "mean": -1.2,
+   "std": 0.0,
+   "min": -1.2,
+   "p01": -1.2,
+   "p99": -1.2,
+   "max": -1.2
+  },
+  "no_drift_stone_cells_below_mid": 0.0,
+  "no_drift_gap_cells_above_mid": 0.0,
+  "noisy_values_at_clip_floor_share_gap": 0.7875,
+  "noisy_values_at_clip_ceiling_share_all": 0.0,
+  "centre_row_gap_runs_cells": [
+   1
+  ],
+  "xy_channel_equals_grid": true
+ },
+ "stone_lattice_d0.25": {
+  "tile": "stone_lattice d0.25",
+  "placement": "stone centre [0.256, 0.256] m from tile origin, pelvis 0.04 m ahead of it",
+  "pelvis_z_above_ground_m": 0.76,
+  "sensor_pos_minus_pelvis_m": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "torso_link_z_minus_pelvis_m": 0.044,
+  "robot_geoms_in_group0": 0,
+  "terrain_geoms": {
+   "pit_floor_boxes_top_bottom": [
+    [
+     -1.9999999999999998,
+     -2.0999999999999996
+    ]
+   ],
+   "n_column_boxes": 204,
+   "column_top_z_min_max": [
+    0.0,
+    0.0
+   ],
+   "column_bottom_z_min_max": [
+    -2.0,
+    -1.0
+   ],
+   "column_sizes_min_max_m": [
+    0.35624999999999973,
+    28.0
+   ]
+  },
+  "n_points": 693,
+  "n_stone_points": 375,
+  "n_gap_points": 318,
+  "n_other_points": 0,
+  "misses": 0,
+  "gap_ray_hit_z_world": {
+   "n": 318,
+   "mean": -2.0,
+   "std": 0.0,
+   "min": -2.0,
+   "p01": -2.0,
+   "p99": -2.0,
+   "max": -2.0
+  },
+  "gap_ray_distance": {
+   "n": 318,
+   "mean": 2.76,
+   "std": 0.0,
+   "min": 2.76,
+   "p01": 2.76,
+   "p99": 2.76,
+   "max": 2.76
+  },
+  "gap_ray_normal_z": {
+   "n": 318,
+   "mean": 1.0,
+   "std": 0.0,
+   "min": 1.0,
+   "p01": 1.0,
+   "p99": 1.0,
+   "max": 1.0
+  },
+  "true_rel_stone": {
+   "n": 375,
+   "mean": -0.76,
+   "std": 0.0,
+   "min": -0.76,
+   "p01": -0.76,
+   "p99": -0.76,
+   "max": -0.76
+  },
+  "true_rel_gap": {
+   "n": 318,
+   "mean": -2.76,
+   "std": 0.0,
+   "min": -2.76,
+   "p01": -2.76,
+   "p99": -2.76,
+   "max": -2.76
+  },
+  "obs_clean_stone": {
+   "n": 375,
+   "mean": -0.76,
+   "std": 0.0,
+   "min": -0.76,
+   "p01": -0.76,
+   "p99": -0.76,
+   "max": -0.76
+  },
+  "obs_clean_gap": {
+   "n": 318,
+   "mean": -1.2,
+   "std": 0.0,
+   "min": -1.2,
+   "p01": -1.2,
+   "p99": -1.2,
+   "max": -1.2
+  },
+  "obs_clean_minus_true_stone_max_abs": 0.0,
+  "obs_noisy_stone": {
+   "n": 187500,
+   "mean": -0.8376,
+   "std": 0.1713,
+   "min": -1.2,
+   "p01": -1.2,
+   "p99": -0.6701,
+   "max": -0.5998
+  },
+  "obs_noisy_gap": {
+   "n": 159000,
+   "mean": -1.1092,
+   "std": 0.1789,
+   "min": -1.2,
+   "p01": -1.2,
+   "p99": -0.6917,
+   "max": -0.613
+  },
+  "noisy_threshold_mid_m": -0.98,
+  "noisy_stone_cells_below_mid": 0.1754,
+  "noisy_gap_cells_above_mid": 0.2068,
+  "no_drift_noisy_stone": {
+   "n": 187500,
+   "mean": -0.7615,
+   "std": 0.0416,
+   "min": -0.9147,
+   "p01": -0.8541,
+   "p99": -0.6676,
+   "max": -0.5871
+  },
+  "no_drift_noisy_gap": {
+   "n": 159000,
+   "mean": -1.2,
+   "std": 0.0,
+   "min": -1.2,
+   "p01": -1.2,
+   "p99": -1.2,
+   "max": -1.2
+  },
+  "no_drift_stone_cells_below_mid": 0.0,
+  "no_drift_gap_cells_above_mid": 0.0,
+  "noisy_values_at_clip_floor_share_gap": 0.7932,
+  "noisy_values_at_clip_ceiling_share_all": 0.0,
+  "centre_row_gap_runs_cells": [
+   1,
+   3,
+   2,
+   2
+  ],
+  "xy_channel_equals_grid": true
+ }
+}

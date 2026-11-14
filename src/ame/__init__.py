@@ -41,7 +41,17 @@ reused on other tasks.  Importing the package (mjlab does it through the
   task with AlphaNIST's sampling parameters (``ALPHANIST_SGS_PARAMS``);
 * ``Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Velocity-Rough-G1`` — the AngW4Z
   task plus the AME task's contact package (``ame_contact``: illegal-contact
-  termination, ``undesired_contacts`` and ``termination_penalty``).
+  termination, ``undesired_contacts`` and ``termination_penalty``);
+* ``Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Foothold-Velocity-Rough-G1`` — the
+  Contact task plus the BeamDojo-style foothold reward (``foothold``: share of
+  sole points more than 10 cm above the terrain while in contact) in its own
+  reward group under a double critic (``double_critic_ppo_runner_cfg``,
+  A = 1.0 A1 + 0.25 A2), one-sided ``foot_clearance`` / ``foot_swing_height``
+  (``one_sided_clearance``: only a foot below the 10 cm target is penalised)
+  and the per-swing clearance-cost log over gaps (``swing_diagnostics``).
+  ``illegal_contact`` keeps counting self-contact.  The delta, the one-sided
+  switch and the self-contact choice were picked from the contact run's
+  evaluation (notes/report_foothold_impl.md, section 11).
 
 Train / play with mjlab's own CLIs::
 
@@ -62,7 +72,11 @@ from ame.env_cfg import (
   ame_stage_env_cfg,
 )
 from ame.mdp.sgs import ALPHANIST_SGS_PARAMS
-from ame.rl_cfg import ame_symmetric_ppo_runner_cfg, delta_ppo_runner_cfg
+from ame.rl_cfg import (
+  ame_symmetric_ppo_runner_cfg,
+  delta_ppo_runner_cfg,
+  double_critic_ppo_runner_cfg,
+)
 
 register_mjlab_task(
   task_id="Ame-Velocity-Rough-G1",
@@ -252,4 +266,44 @@ register_mjlab_task(
     ame_contact=True,
   ),
   rl_cfg=ame_symmetric_ppo_runner_cfg(),
+)
+
+FOOTHOLD_TASK_FLAGS = {
+  "foothold": True,
+  "foothold_delta": 0.10,
+  "one_sided_clearance": True,
+  "swing_diagnostics": True,
+}
+"""The Foothold task's switches on top of the Contact task (the double critic is
+its runner cfg).  ``foothold_delta`` 0.10: the smallest of 0.02 / 0.05 / 0.10
+whose touchdown false-positive share stays below 2 % on flat, wave and
+random_rough (0.1 % / 0.7 % / 1.2 %; 0.05 gives 3.6 % / 9.3 % / 17.5 %).
+``one_sided_clearance`` on: over gaps the two-sided clearance + swing-height
+cost per swing is 7.8x that of other swings (stones levels 1-9).  Both measured
+on the contact run's model_9999 (notes/eval_foothold.py)."""
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Foothold-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+    **FOOTHOLD_TASK_FLAGS,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+    **FOOTHOLD_TASK_FLAGS,
+  ),
+  rl_cfg=double_critic_ppo_runner_cfg(),
 )

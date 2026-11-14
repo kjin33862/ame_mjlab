@@ -19,6 +19,7 @@ command): `matrix_plots/matrix_summary.csv` (open loop) and `goal_plots/goal_sum
 | gap_edge_sgs_angw4z_1024 | sgs | run/gap_edge_sgs_angw4z_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angw4z_1024 --agent.logger tensorboard` | |
 | gap_edge_alphanist_angw4z_1024 | sgs | run/gap_edge_alphanist_angw4z_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4Z-AlphaNIST-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_alphanist_angw4z_1024 --agent.logger tensorboard` | |
 | gap_edge_sgs_angw4z_contact_1024 | sgs | run/gap_edge_sgs_angw4z_contact_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angw4z_contact_1024 --agent.logger tensorboard` | Contact package copied as one unit from Ame-Velocity-Rough-G1 (셩's port): illegal_contact termination on 20 bodies (stricter than the AME paper's torso-only rule), undesired_contacts -1, termination_penalty -50 (REBALANCE, reason not recorded; AME paper and Isaac Lab use 200). link_contact_forces left out. Not retuned for the mjlab reward stack. |
+| gap_edge_sgs_angw4z_contact_foothold_1024 | sgs | run/gap_edge_sgs_angw4z_contact_foothold_1024 | Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Foothold-Velocity-Rough-G1 | `uv run train Ame-Mjlab-Gap-Edge-SGS-AngW4Z-Contact-Foothold-Velocity-Rough-G1 --env.scene.num-envs 1024 --agent.max-iterations 10000 --agent.seed 42 --agent.run-name gap_edge_sgs_angw4z_contact_foothold_1024 --agent.logger tensorboard` | Not trained yet. Contact task + BeamDojo-style foothold reward (delta 0.10 m, weight -1) in its own reward group under a double critic (A = 1.0 A1 + 0.25 A2), one-sided foot_clearance / foot_swing_height, illegal_contact unchanged (self-contact still terminates), per-swing gap diagnostics. Decisions from the contact run's eval: notes/report_foothold_impl.md sections 11-13. |
 
 gap_1024 and gap_1024_s43 have no tag and no recorded commit; the branch is inferred from the task (the gap task
 first appeared in `49a85ca`). Their commands are reconstructed from `checkpoints/<run>/params/agent.yaml`.
@@ -113,3 +114,38 @@ Same as gap_edge_sgs_angw4z_1024 except the SGS sampling parameters: `ALPHANIST_
 AlphaNIST eq. 4; H = 100 and eps = 1e-8 unchanged) instead of `SGS_PARAMS` (t = 0.66, κ = 5, T = 2), as
 gap_progress_heading_alphanist_1024 is to gap_progress_heading_sgs_1024. Edge success, centre spawn, the yaw-rate-only
 kernel at weight 4.0 and the rest of the config are identical. SGS is training only, so the play config is AngW4Z's.
+
+## gap_edge_sgs_angw4z_contact_foothold_1024: Contact task + foothold reward, double critic, one-sided clearance
+
+Same as gap_edge_sgs_angw4z_contact_1024 (1024 envs, 10k iterations, seed 42; spawn, edge success, SGS, commands,
+board, contact package, PPO numbers, symmetry, shared encoder) plus:
+
+- `foothold` reward (`ame.mdp.foothold`), weight -1.0: per foot in contact, the share of 15 sole points (3 x 5 grid
+  on the G1 foot capsules) whose sole height above the terrain right below is more than delta = 0.10 m, summed
+  over the feet. Read from a new 2 x 15-ray sensor `foot_sole_scan`.
+- Double critic (`ame.double_critic.DoubleCriticPPO`, runner cfg `double_critic_ppo_runner_cfg()`): group 2 =
+  `foothold`, group 1 = every other term; GAE and batch normalisation per group, A = 1.0 A1 + 0.25 A2, value loss
+  L1 + L2.
+- One-sided `foot_clearance` / `foot_swing_height` (`ame.mdp.swing`): only a foot below the 0.10 m target is
+  penalised; names, weights and params unchanged.
+- `swing_cost_by_gap` metric (logging only): per-swing clearance and swing-height costs, two- and one-sided, over
+  gaps vs not.
+
+Decisions (from contact model_9999, notes/eval_foothold.py and the stone analysis; numbers in
+notes/report_foothold_impl.md sections 11-13):
+
+- delta 0.10: the smallest of 0.02 / 0.05 / 0.10 with touchdown false positives below 2 % on flat, wave and
+  random_rough (0.07 %, 0.7 %, 1.2 %; 0.05 gives 3.6 %, 9.3 %, 17.5 %).
+- One-sided clearance on: two-sided clearance + swing-height cost is 7.8x higher on gap-crossing swings than on
+  other swings (stones levels 1-9).
+- illegal_contact kept as is: only 4 of 366 stone contact terminations of the contact run are self-contact.
+
+Differences from BeamDojo (arXiv 2502.10363):
+
+- Relative-height foothold: a sole point is unsupported when it is more than delta above the terrain right below
+  it, not when the terrain's global height is below a fixed eps (BeamDojo's terrain is flat-topped over a pit;
+  ours has stairs and height fields).
+- 3 x 5 sole grid on the G1 foot capsules, and the per-foot fraction instead of the point count.
+- Two value heads on one shared critic trunk instead of two critic networks.
+- No two-stage training (BeamDojo trains on soft terrain dynamics first, then hard); one stage here, on the gap
+  board with SGS.

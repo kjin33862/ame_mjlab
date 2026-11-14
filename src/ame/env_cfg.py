@@ -38,6 +38,10 @@ from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.config.g1.env_cfgs import unitree_g1_rough_env_cfg
+from mjlab.tasks.velocity.mdp.rewards import feet_clearance as mjlab_feet_clearance
+from mjlab.tasks.velocity.mdp.rewards import (
+  feet_swing_height as mjlab_feet_swing_height,
+)
 from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
 
 from ame.mdp import rewards as ame_rew
@@ -49,6 +53,13 @@ from ame.mdp.events import (
   reset_root_state_at_centre,
   reset_root_state_on_patches,
 )
+from ame.mdp.foothold import (
+  FOOTHOLD_DELTA,
+  FOOTHOLD_WEIGHT,
+  SOLE_SCAN_SENSOR,
+  foot_sole_scan_cfg,
+  foothold_reward_cfg,
+)
 from ame.mdp.metrics import (
   command_speed,
   edge_distance,
@@ -58,6 +69,11 @@ from ame.mdp.metrics import (
   pelvis_yaw_error,
 )
 from ame.mdp.sgs import SGS_PARAMS, terrain_levels_sgs, terrain_levels_sgs_edge
+from ame.mdp.swing import (
+  feet_clearance_one_sided,
+  feet_swing_height_one_sided,
+  swing_diagnostics_cfg,
+)
 from ame.reward_cfg import apply_ame2_contact, apply_ame2_rewards, rebalance
 from ame.scan import apply_scan
 from ame.terrains import (
@@ -269,6 +285,46 @@ def add_tracking_metrics(cfg: Any, command_name: str = "twist") -> None:
   )
 
 
+def apply_foot_sole_scan(cfg: Any) -> None:
+  """Add the ``foot_sole_scan`` ray-cast sensor (2 feet x 15 sole points), once."""
+  sensors = tuple(cfg.scene.sensors or ())
+  if not any(getattr(s, "name", None) == SOLE_SCAN_SENSOR for s in sensors):
+    cfg.scene.sensors = (*sensors, foot_sole_scan_cfg())
+
+
+def apply_foothold(
+  cfg: Any, delta: float = FOOTHOLD_DELTA, weight: float = FOOTHOLD_WEIGHT
+) -> None:
+  """BeamDojo-style foothold reward (:mod:`ame.mdp.foothold`): the sole scan
+  sensor plus the ``foothold`` term, the per-foot share of sole points more than
+  ``delta`` above the terrain while in contact, summed over feet, at ``weight``.
+  Under a single critic it is one more term of the reward; the double-critic
+  runner cfg (:func:`ame.rl_cfg.double_critic_ppo_runner_cfg`) moves it to its
+  own reward group."""
+  apply_foot_sole_scan(cfg)
+  cfg.rewards["foothold"] = foothold_reward_cfg(delta=delta, weight=weight)
+
+
+def apply_one_sided_clearance(cfg: Any) -> None:
+  """``foot_clearance`` and ``foot_swing_height`` penalise only a foot *below*
+  the target height (:mod:`ame.mdp.swing`); names, weights and params kept."""
+  clearance = cfg.rewards["foot_clearance"]
+  if clearance.func is not mjlab_feet_clearance:
+    raise ValueError("foot_clearance is not mjlab's feet_clearance")
+  clearance.func = feet_clearance_one_sided
+  swing = cfg.rewards["foot_swing_height"]
+  if swing.func is not mjlab_feet_swing_height:
+    raise ValueError("foot_swing_height is not mjlab's feet_swing_height")
+  swing.func = feet_swing_height_one_sided
+
+
+def apply_swing_diagnostics(cfg: Any) -> None:
+  """Log ``foot_clearance`` / ``foot_swing_height`` costs per swing, split by
+  whether the swing crossed a gap (``Swing/*``; logging only, no reward)."""
+  apply_foot_sole_scan(cfg)
+  cfg.metrics["swing_cost_by_gap"] = swing_diagnostics_cfg()
+
+
 def ame_rough_env_cfg(
   play: bool = False,
   rewards: str = "ame2_rebalanced",
@@ -326,6 +382,10 @@ def ame_gap_env_cfg(
   ang_vel_weight: float | None = None,
   ang_vel_z_only: bool = False,
   ame_contact: bool = False,
+  foothold: bool = False,
+  foothold_delta: float = FOOTHOLD_DELTA,
+  one_sided_clearance: bool = False,
+  swing_diagnostics: bool = False,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -352,7 +412,13 @@ def ame_gap_env_cfg(
   above).  ``ame_contact`` adds the AME task's contact package
   (:func:`ame.reward_cfg.apply_ame2_contact`: ``undesired_contact`` sensor,
   ``illegal_contact`` termination, ``undesired_contacts`` and
-  ``termination_penalty`` rewards) to mjlab's rewards."""
+  ``termination_penalty`` rewards) to mjlab's rewards.  ``foothold`` adds the
+  BeamDojo-style foothold reward (``apply_foothold``, threshold
+  ``foothold_delta``); ``one_sided_clearance`` makes ``foot_clearance`` and
+  ``foot_swing_height`` penalise only a foot below the target
+  (``apply_one_sided_clearance``); ``swing_diagnostics`` logs those two costs
+  per swing over gaps vs not (``apply_swing_diagnostics``).  All three default
+  off."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   if heading_command:
     apply_heading_commands(cfg)
@@ -377,6 +443,12 @@ def ame_gap_env_cfg(
     cfg.rewards["track_angular_velocity"].weight = ang_vel_weight
   if ame_contact:
     apply_ame2_contact(cfg)
+  if foothold:
+    apply_foothold(cfg, delta=foothold_delta)
+  if one_sided_clearance:
+    apply_one_sided_clearance(cfg)
+  if swing_diagnostics:
+    apply_swing_diagnostics(cfg)
   if not play:
     apply_terrain_floor(cfg, command_name="twist", **{**GAP_CURRICULUM, "rule": rule})
     if sgs:
@@ -402,11 +474,15 @@ __all__ = [
   "apply_centre_spawn",
   "apply_deploy_observations",
   "apply_edge_success",
+  "apply_foot_sole_scan",
+  "apply_foothold",
   "apply_heading_commands",
+  "apply_one_sided_clearance",
   "apply_patch_spawn",
   "apply_rewards",
   "apply_scan",
   "apply_sgs",
+  "apply_swing_diagnostics",
   "apply_terrain",
   "apply_terrain_floor",
   "apply_twist_commands",

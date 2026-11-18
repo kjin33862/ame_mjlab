@@ -50,13 +50,32 @@ def sgs_weights(p: torch.Tensor, t: float, kappa: float, eps: float) -> torch.Te
   return w.clamp(min=eps)
 
 
+UNIFORM_MIX_KEY = "uniform_mix"
+"""Optional key of the ``sgs`` params: the share ``m`` of the uniform
+distribution mixed into the sampling probabilities (:func:`sgs_probs`).  Not
+in ``SGS_PARAMS`` (a missing key is ``m = 0``), so configs without it are
+unchanged; distinct from ``eps``, the weight floor."""
+
+
 def sgs_probs(
-  p: torch.Tensor, t: float, kappa: float, T: float, eps: float
+  p: torch.Tensor,
+  t: float,
+  kappa: float,
+  T: float,
+  eps: float,
+  uniform_mix: float = 0.0,
 ) -> torch.Tensor:
   """Sampling probabilities over the last axis: ``softmax(log(w + eps) /
-  max(T, 1))``."""
+  max(T, 1))``, then ``(1 - m) * that + m / L`` with ``m = uniform_mix`` and
+  ``L`` the number of levels (the uniform share is over one family's levels).
+  ``m = 0`` returns the softmax unchanged."""
   logit = torch.log(sgs_weights(p, t, kappa, eps) + eps)
-  return torch.softmax(logit / max(T, 1.0), dim=-1)
+  probs = torch.softmax(logit / max(T, 1.0), dim=-1)
+  if uniform_mix == 0.0:
+    return probs
+  if not 0.0 < uniform_mix <= 1.0:
+    raise ValueError(f"uniform_mix must be in [0, 1], got {uniform_mix}")
+  return (1.0 - uniform_mix) * probs + uniform_mix / probs.shape[-1]
 
 
 class OutcomeBuffer:
@@ -128,7 +147,9 @@ class terrain_levels_sgs(terrain_levels_floor):
     ``floor`` .. top."""
     p = self.buffer.success_rate()[:, self.floor :]
     s = self.sgs
-    return sgs_probs(p, s["t"], s["kappa"], s["T"], s["eps"])
+    return sgs_probs(
+      p, s["t"], s["kappa"], s["T"], s["eps"], float(s.get(UNIFORM_MIX_KEY, 0.0))
+    )
 
   def __call__(
     self,
@@ -256,6 +277,7 @@ __all__ = [
   "ALPHANIST_SGS_PARAMS",
   "EDGE_LOG_EPISODES",
   "SGS_PARAMS",
+  "UNIFORM_MIX_KEY",
   "OutcomeBuffer",
   "sgs_probs",
   "sgs_weights",

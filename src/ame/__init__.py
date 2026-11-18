@@ -51,7 +51,11 @@ reused on other tasks.  Importing the package (mjlab does it through the
   and the per-swing clearance-cost log over gaps (``swing_diagnostics``).
   ``illegal_contact`` keeps counting self-contact.  The delta, the one-sided
   switch and the self-contact choice were picked from the contact run's
-  evaluation (notes/report_foothold_impl.md, section 11).
+  evaluation (notes/report_foothold_impl.md, section 11);
+* ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-Velocity-Rough-G1``
+  — the Foothold task with AlphaNIST's sampling parameters mixed with 20 %
+  uniform over each family's levels (``ALPHANIST_MIX20_SGS_PARAMS``) and
+  ``foothold_delta`` 0.30 m instead of 0.10.
 
 Train / play with mjlab's own CLIs::
 
@@ -71,7 +75,7 @@ from ame.env_cfg import (
   ame_rough_env_cfg,
   ame_stage_env_cfg,
 )
-from ame.mdp.sgs import ALPHANIST_SGS_PARAMS
+from ame.mdp.sgs import ALPHANIST_SGS_PARAMS, UNIFORM_MIX_KEY
 from ame.rl_cfg import (
   ame_symmetric_ppo_runner_cfg,
   delta_ppo_runner_cfg,
@@ -304,6 +308,45 @@ register_mjlab_task(
     ang_vel_z_only=True,
     ame_contact=True,
     **FOOTHOLD_TASK_FLAGS,
+  ),
+  rl_cfg=double_critic_ppo_runner_cfg(),
+)
+
+FOOTHOLD_D30_TASK_FLAGS = {**FOOTHOLD_TASK_FLAGS, "foothold_delta": 0.30}
+"""The Foothold task's switches with ``foothold_delta`` 0.30 m: above the
+board's tallest stair riser (0.20 m at level 9), so a sole point hanging over a
+stair edge is no longer counted as unsupported, while a point over a stone gap
+(floor 2.0 m down) still is."""
+
+ALPHANIST_MIX20_SGS_PARAMS = {**ALPHANIST_SGS_PARAMS, UNIFORM_MIX_KEY: 0.2}
+"""AlphaNIST sampling mixed with 20 % uniform over each family's levels:
+``0.8 * AlphaNIST + 0.2 / L``, so every level keeps at least 2 % (L = 10) and
+p = 0 levels (stones 3-9 in the Foothold run) keep being sampled and their
+buffers refreshed."""
+
+register_mjlab_task(
+  task_id="Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-Velocity-Rough-G1",
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    sgs_params=ALPHANIST_MIX20_SGS_PARAMS,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+    **FOOTHOLD_D30_TASK_FLAGS,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+    **FOOTHOLD_D30_TASK_FLAGS,
   ),
   rl_cfg=double_critic_ppo_runner_cfg(),
 )

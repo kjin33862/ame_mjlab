@@ -1,0 +1,22 @@
+|   7   | edge_distance     |
++-------+-------------------+
+
+Module mujoco_warp._src.io 4b387a0 load on device 'cuda:0' took 2.06 ms  (cached)
+term terrain_levels_sgs_edge sgs params {'H': 100, 't': 0.5, 'kappa': 1.0, 'T': 1.0, 'eps': 1e-08, 'uniform_mix': 0.2}
+
+stepping_stones: max|logged prob - (0.8 AN + 0.02)| = 3.9e-08, sum = 1.000000
+  p_k          78.0  81.0   8.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0
+  AlphaNIST    38.4  36.4  25.2   0.0   0.0   0.0   0.0   0.0   0.0   0.0
+  logged prob  32.7  31.1  22.1   2.0   2.0   2.0   2.0   2.0   2.0   2.0
+
+pyramid_stairs: max|logged prob - (0.8 AN + 0.02)| = 9.7e-09, sum = 1.000000
+  p_k          78.0  81.0  81.0  80.0  76.0  77.0  74.0  72.0  66.0  58.0
+  AlphaNIST     9.6   9.1   9.1   9.3   9.9   9.8  10.2  10.4  11.0  11.5
+  logged prob   9.7   9.3   9.3   9.4   9.9   9.8  10.2  10.4  10.8  11.2
+
+pyramid_stairs_inv: max|logged prob - (0.8 AN + 0.02)| = 1.1e-08, sum = 1.000000
+  p_k          71.0  71.0  67.0  60.0  53.0  37.0  30.0   0.0   2.0   0.0
+  AlphaNIST    13.2  13.2  13.6  14.2  14.5  14.0  13.3   0.0   4.1   0.0
+  logged prob  12.5  12.5  12.9  13.4  13.6  13.2  12.6   2.0   5.2   2.0
+
+OK

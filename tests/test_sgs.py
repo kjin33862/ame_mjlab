@@ -226,3 +226,57 @@ def test_alphanist_task_is_registered_and_existing_sgs_task_unchanged() -> None:
   sgs = load_env_cfg("Ame-Mjlab-Gap-ProgressHeading-SGS-Velocity-Rough-G1")
   assert alpha.curriculum["terrain_levels"].params["sgs"] == ALPHANIST_SGS_PARAMS
   assert sgs.curriculum["terrain_levels"].params["sgs"] == SGS_PARAMS
+
+
+# --------------------------------------------------------------------- uniform mix
+
+
+def test_uniform_mix_zero_is_bitwise_the_plain_softmax() -> None:
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS
+
+  p = torch.rand(3, 10)
+  for s in (SGS_PARAMS, ALPHANIST_SGS_PARAMS):
+    args = (p, s["t"], s["kappa"], s["T"], s["eps"])
+    assert torch.equal(sgs_probs(*args), sgs_probs(*args, 0.0))
+
+
+def test_uniform_mix_is_convex_combination_with_uniform_over_levels() -> None:
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS
+
+  s = ALPHANIST_SGS_PARAMS
+  # stones-like row: two learnt levels, the rest p = 0
+  p = torch.tensor([[0.78, 0.81, 0.08] + [0.0] * 7], dtype=torch.float64)
+  args = (p, s["t"], s["kappa"], s["T"], s["eps"])
+  base, mixed = sgs_probs(*args), sgs_probs(*args, 0.2)
+  assert torch.allclose(mixed, 0.8 * base + 0.2 / 10)
+  assert float(mixed.sum()) == pytest.approx(1.0)
+  assert float(mixed[0, 3:].min()) >= 0.02 - 1e-12  # every level keeps m / L
+  with pytest.raises(ValueError):
+    sgs_probs(*args, 1.5)
+
+
+def test_sgs_term_reads_uniform_mix_and_logs_mixed_probs() -> None:
+  from ame.mdp import terrain_levels_sgs
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS, UNIFORM_MIX_KEY
+
+  env = _stub_env(types=[0, 1], levels=[3, 5], distance=[5.0, 5.0])
+  kwargs = {"command_name": "twist", "floor": 0, "rule": "progress"}
+  out = {}
+  for m in (0.0, 0.2):
+    sgs = {**ALPHANIST_SGS_PARAMS, UNIFORM_MIX_KEY: m}
+    term = terrain_levels_sgs(SimpleNamespace(params={**kwargs, "sgs": sgs}), env)
+    term.buffer.record(torch.tensor([0] * 4), torch.tensor([1] * 4),
+                       torch.tensor([True, False, True, False]))
+    out[m] = term(env, torch.arange(0), **kwargs)
+  for level in range(10):
+    assert out[0.2][f"a/prob_{level}"] == pytest.approx(
+      0.8 * out[0.0][f"a/prob_{level}"] + 0.02
+    )
+  assert sum(out[0.2][f"a/prob_{level}"] for level in range(10)) == pytest.approx(1.0)
+
+
+def test_existing_param_dicts_have_no_uniform_mix() -> None:
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS, UNIFORM_MIX_KEY
+
+  assert UNIFORM_MIX_KEY not in SGS_PARAMS
+  assert UNIFORM_MIX_KEY not in ALPHANIST_SGS_PARAMS

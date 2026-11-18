@@ -512,3 +512,29 @@ def test_foothold_task_differs_from_contact_only_in_the_intended_items() -> None
   base_alg = rl_base.pop("algorithm")
   assert base_alg.pop("class_name") == "PPO"
   assert alg == base_alg and rl_base == rl_new
+
+
+D30_TASK = "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-Velocity-Rough-G1"
+
+
+def test_d30_alphanist_task_differs_from_foothold_only_in_sgs_params_mix_and_delta() -> None:
+  from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
+
+  import ame  # noqa: F401
+  from ame.mdp.sgs import ALPHANIST_SGS_PARAMS, SGS_PARAMS, UNIFORM_MIX_KEY
+
+  assert D30_TASK in list_tasks()
+  for play in (False, True):
+    base, new = load_env_cfg(FOOTHOLD_TASK, play=play), load_env_cfg(D30_TASK, play=play)
+    assert base.rewards["foothold"].params["delta"] == 0.10
+    assert new.rewards["foothold"].params["delta"] == 0.30
+    new.rewards["foothold"].params["delta"] = 0.10
+    if not play:
+      assert base.curriculum["terrain_levels"].params["sgs"] == SGS_PARAMS
+      assert new.curriculum["terrain_levels"].params["sgs"] == {
+        **ALPHANIST_SGS_PARAMS,
+        UNIFORM_MIX_KEY: 0.2,
+      }
+      new.curriculum["terrain_levels"].params["sgs"] = dict(SGS_PARAMS)
+    assert norm(base) == norm(new)
+  assert norm(load_rl_cfg(FOOTHOLD_TASK)) == norm(load_rl_cfg(D30_TASK))

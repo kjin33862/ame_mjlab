@@ -1,0 +1,20 @@
+=== env (train): 11 changed lines
+@@ -991 +991 @@
+-'delta': 0.1},
++'delta': 0.3},
+@@ -1027,4 +1027,5 @@
+-'t': 0.66,
+-'kappa': 5.0,
+-'T': 2.0,
+-'eps': 1e-08},
++'t': 0.5,
++'kappa': 1.0,
++'T': 1.0,
++'eps': 1e-08,
++'uniform_mix': 0.2},
+=== env (play): 2 changed lines
+@@ -988 +988 @@
+-'delta': 0.1},
++'delta': 0.3},
+=== rl: 0 changed lines
+

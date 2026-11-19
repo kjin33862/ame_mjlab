@@ -29,10 +29,12 @@ model's ``actuator_forcerange``.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
 from mjlab.entity import Entity
+from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import ContactSensor
 from mjlab.utils.lab_api.math import quat_apply_inverse, wrap_to_pi, yaw_quat
@@ -75,6 +77,67 @@ def track_lin_vel_xy_yaw_frame_exp(
   vel_yaw = quat_apply_inverse(yaw_quat(quat), vel_w)
   error = torch.sum(torch.square(command[:, :2] - vel_yaw[:, :2]), dim=1)
   return torch.exp(-error / std**2)
+
+
+LIN_VEL_EMA_TAU = 1.0
+"""Time constant (s) of :class:`track_lin_vel_xy_ema_exp`'s velocity average."""
+
+
+def ema_alpha(step_dt: float, tau: float) -> float:
+  """Per-step EMA gain of a first-order low-pass with time constant ``tau``:
+  ``1 - exp(-dt / tau)`` (exact for a velocity held over each step)."""
+  if tau <= 0.0:
+    raise ValueError(f"tau must be > 0, got {tau}")
+  return 1.0 - math.exp(-step_dt / tau)
+
+
+class track_lin_vel_xy_ema_exp:
+  """Linear velocity tracking against a moving average of the body's velocity.
+
+  mjlab's ``track_linear_velocity`` with the xy part of the error measured on an
+  exponential moving average (time constant ``tau``, s) of the tracked body's xy
+  velocity in its yaw frame instead of the instantaneous body-frame velocity::
+
+    v_ema <- v_ema + alpha (v_yaw - v_ema),  alpha = 1 - exp(-step_dt / tau)
+    r = exp(-(|cmd_xy - v_ema|^2 + v_b,z^2) / std^2)
+
+  The vertical part (the body-frame ``z`` velocity squared) is mjlab's,
+  instantaneous.  A step-to-step speed oscillation within a stride averages out,
+  so stride length and cadence are no longer pinned by the per-step error.
+  After a reset the average restarts at the body's velocity: the envs reset this
+  step are flagged and the next call (after mjlab's ``sim.forward``, so the
+  velocity is the reset state's) initialises them to the current velocity before
+  updating."""
+
+  def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
+    self.alpha = ema_alpha(env.step_dt, cfg.params.get("tau", LIN_VEL_EMA_TAU))
+    self.ema = torch.zeros(env.num_envs, 2, device=env.device)
+    self.fresh = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+
+  def __call__(
+    self,
+    env: ManagerBasedRlEnv,
+    std: float,
+    command_name: str,
+    tau: float = LIN_VEL_EMA_TAU,
+    asset_cfg: SceneEntityCfg = _ROBOT,
+  ) -> torch.Tensor:
+    del tau  # Read once in __init__.
+    asset: Entity = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    assert command is not None
+    quat, vel_w = _tracking_frame(asset, asset_cfg)
+    vel_yaw = quat_apply_inverse(yaw_quat(quat), vel_w)[:, :2]
+    self.ema = torch.where(
+      self.fresh.unsqueeze(1), vel_yaw, self.ema + self.alpha * (vel_yaw - self.ema)
+    )
+    self.fresh[:] = False
+    xy_error = torch.sum(torch.square(command[:, :2] - self.ema), dim=1)
+    z_error = torch.square(quat_apply_inverse(quat, vel_w)[:, 2])
+    return torch.exp(-(xy_error + z_error) / std**2)
+
+  def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+    self.fresh[slice(None) if env_ids is None else env_ids] = True
 
 
 def _tracking_frame(asset: Entity, asset_cfg: SceneEntityCfg):
@@ -549,10 +612,12 @@ def rbf_foot_flat(
 
 
 __all__ = [
+  "LIN_VEL_EMA_TAU",
   "air_time_variance_penalty",
   "ang_vel_xy_l2",
   "applied_torque_limits",
   "base_roll_rate_l2",
+  "ema_alpha",
   "feet_air_time_positive_biped",
   "feet_slide",
   "feet_stumble",
@@ -570,6 +635,7 @@ __all__ = [
   "rbf_upper_body_pose",
   "terrain_flatness",
   "track_ang_vel_z_world_exp",
+  "track_lin_vel_xy_ema_exp",
   "track_lin_vel_xy_yaw_frame_exp",
   "undesired_contacts",
 ]

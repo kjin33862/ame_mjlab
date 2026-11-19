@@ -1,0 +1,4 @@
+term track_lin_vel_xy_ema_exp, alpha 0.019801, step_dt 0.02
+env-steps compared 3200, restarts compared 229, resets 221
+max |term.ema - mirror| = 1.86e-09
+OK

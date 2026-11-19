@@ -55,7 +55,12 @@ reused on other tasks.  Importing the package (mjlab does it through the
 * ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-Velocity-Rough-G1``
   — the Foothold task with AlphaNIST's sampling parameters mixed with 20 %
   uniform over each family's levels (``ALPHANIST_MIX20_SGS_PARAMS``) and
-  ``foothold_delta`` 0.30 m instead of 0.10.
+  ``foothold_delta`` 0.30 m instead of 0.10;
+* ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-StrideFree-Velocity-Rough-G1``
+  — the FootholdD30 task with ``track_linear_velocity`` on a 1.0 s moving
+  average of the pelvis's yaw-frame xy velocity (``lin_vel_ema_tau``) and the
+  ``pose`` walking std of hip pitch, hip roll and knee doubled
+  (``walking_posture_std_scale``); weights and the tracking std unchanged.
 
 Train / play with mjlab's own CLIs::
 
@@ -71,6 +76,7 @@ from mjlab.tasks.registry import register_mjlab_task
 
 from ame.env_cfg import (
   EDGE_DISTANCE,
+  STRIDE_FREE_WALKING_STD_SCALE,
   ame_gap_env_cfg,
   ame_rough_env_cfg,
   ame_stage_env_cfg,
@@ -347,6 +353,46 @@ register_mjlab_task(
     ang_vel_z_only=True,
     ame_contact=True,
     **FOOTHOLD_D30_TASK_FLAGS,
+  ),
+  rl_cfg=double_critic_ppo_runner_cfg(),
+)
+
+STRIDE_FREE_FLAGS = {
+  "lin_vel_ema_tau": 1.0,
+  "walking_posture_std_scale": STRIDE_FREE_WALKING_STD_SCALE,
+}
+"""The StrideFree task's reward switches: linear velocity tracked on a 1.0 s
+moving average of the pelvis's yaw-frame xy velocity, and the walking posture
+std of hip pitch, hip roll and knee doubled."""
+
+register_mjlab_task(
+  task_id=(
+    "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-StrideFree"
+    "-Velocity-Rough-G1"
+  ),
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    sgs_params=ALPHANIST_MIX20_SGS_PARAMS,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+    **FOOTHOLD_D30_TASK_FLAGS,
+    **STRIDE_FREE_FLAGS,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+    **FOOTHOLD_D30_TASK_FLAGS,
+    **STRIDE_FREE_FLAGS,
   ),
   rl_cfg=double_critic_ppo_runner_cfg(),
 )

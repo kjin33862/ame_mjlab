@@ -42,6 +42,10 @@ from mjlab.tasks.velocity.mdp.rewards import feet_clearance as mjlab_feet_cleara
 from mjlab.tasks.velocity.mdp.rewards import (
   feet_swing_height as mjlab_feet_swing_height,
 )
+from mjlab.tasks.velocity.mdp.rewards import (
+  track_linear_velocity as mjlab_track_linear_velocity,
+)
+from mjlab.tasks.velocity.mdp.rewards import variable_posture
 from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
 
 from ame.mdp import rewards as ame_rew
@@ -318,6 +322,48 @@ def apply_one_sided_clearance(cfg: Any) -> None:
   swing.func = feet_swing_height_one_sided
 
 
+STRIDE_FREE_WALKING_STD_SCALE = {
+  r".*hip_pitch.*": 2.0,
+  r".*hip_roll.*": 2.0,
+  r".*knee.*": 2.0,
+}
+"""``pose`` walking-std factors of the StrideFree task: the sagittal stride
+joints (hip pitch, knee) and the lateral step joint (hip roll) at 2x mjlab's G1
+walking std; every other joint and the standing / running stds unchanged."""
+
+
+def apply_lin_vel_ema(cfg: Any, tau: float) -> None:
+  """``track_linear_velocity`` compares the command with a ``tau``-second
+  moving average of the root's yaw-frame xy velocity
+  (:class:`ame.mdp.rewards.track_lin_vel_xy_ema_exp`); name, weight, ``std``
+  and command kept."""
+  term = cfg.rewards["track_linear_velocity"]
+  if term.func is not mjlab_track_linear_velocity:
+    raise ValueError("track_linear_velocity is not mjlab's track_linear_velocity")
+  term.func = ame_rew.track_lin_vel_xy_ema_exp
+  term.params = {
+    "command_name": term.params["command_name"],
+    "std": term.params["std"],
+    "tau": float(tau),
+    "asset_cfg": SceneEntityCfg("robot"),  # no body names: the root link
+  }
+
+
+def apply_walking_posture_std_scale(cfg: Any, scale: dict[str, float]) -> None:
+  """Multiply the ``pose`` term's ``std_walking`` entries named in ``scale``
+  (keys are the existing ``std_walking`` patterns) by their factor."""
+  term = cfg.rewards["pose"]
+  if term.func is not variable_posture:
+    raise ValueError("pose is not mjlab's variable_posture")
+  walking = dict(term.params["std_walking"])
+  missing = set(scale) - set(walking)
+  if missing:
+    raise ValueError(f"no std_walking entry for {sorted(missing)}")
+  for key, factor in scale.items():
+    walking[key] = walking[key] * factor
+  term.params["std_walking"] = walking
+
+
 def apply_swing_diagnostics(cfg: Any) -> None:
   """Log ``foot_clearance`` / ``foot_swing_height`` costs per swing, split by
   whether the swing crossed a gap (``Swing/*``; logging only, no reward)."""
@@ -386,6 +432,8 @@ def ame_gap_env_cfg(
   foothold_delta: float = FOOTHOLD_DELTA,
   one_sided_clearance: bool = False,
   swing_diagnostics: bool = False,
+  lin_vel_ema_tau: float | None = None,
+  walking_posture_std_scale: dict[str, float] | None = None,
 ) -> ManagerBasedRlEnvCfg:
   """The plain AME policy on the gap board under mjlab's G1 rewards.
 
@@ -418,7 +466,11 @@ def ame_gap_env_cfg(
   ``foot_swing_height`` penalise only a foot below the target
   (``apply_one_sided_clearance``); ``swing_diagnostics`` logs those two costs
   per swing over gaps vs not (``apply_swing_diagnostics``).  All three default
-  off."""
+  off.  ``lin_vel_ema_tau``, if set, makes ``track_linear_velocity`` track a
+  moving average of the yaw-frame xy velocity with that time constant
+  (``apply_lin_vel_ema``); ``walking_posture_std_scale``, if set, scales the
+  named ``pose`` walking stds (``apply_walking_posture_std_scale``).  ``None``
+  keeps mjlab's terms."""
   cfg = ame_rough_env_cfg(play=play, rewards="mjlab")
   if heading_command:
     apply_heading_commands(cfg)
@@ -449,6 +501,10 @@ def ame_gap_env_cfg(
     apply_one_sided_clearance(cfg)
   if swing_diagnostics:
     apply_swing_diagnostics(cfg)
+  if lin_vel_ema_tau is not None:
+    apply_lin_vel_ema(cfg, lin_vel_ema_tau)
+  if walking_posture_std_scale is not None:
+    apply_walking_posture_std_scale(cfg, walking_posture_std_scale)
   if not play:
     apply_terrain_floor(cfg, command_name="twist", **{**GAP_CURRICULUM, "rule": rule})
     if sgs:
@@ -466,6 +522,7 @@ __all__ = [
   "NUM_ENVS",
   "REWARD_STACKS",
   "STAGE_REWARDS",
+  "STRIDE_FREE_WALKING_STD_SCALE",
   "TWIST_RANGES",
   "add_tracking_metrics",
   "ame_gap_env_cfg",
@@ -477,6 +534,7 @@ __all__ = [
   "apply_foot_sole_scan",
   "apply_foothold",
   "apply_heading_commands",
+  "apply_lin_vel_ema",
   "apply_one_sided_clearance",
   "apply_patch_spawn",
   "apply_rewards",
@@ -486,4 +544,5 @@ __all__ = [
   "apply_terrain",
   "apply_terrain_floor",
   "apply_twist_commands",
+  "apply_walking_posture_std_scale",
 ]

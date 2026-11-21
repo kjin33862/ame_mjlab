@@ -195,6 +195,19 @@ def double_critic_ppo_runner_cfg(
   return cfg
 
 
+GOAL_SYMMETRY_FUNC = "ame.symmetry:mirror_obs_actions_goal"
+
+
+def goal_double_critic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """:func:`double_critic_ppo_runner_cfg` with the goal task's mirror
+  (:func:`ame.symmetry.mirror_obs_actions_goal`); nothing else changes."""
+  cfg = double_critic_ppo_runner_cfg()
+  sym = cfg.algorithm.symmetry_cfg
+  assert sym is not None
+  cfg.algorithm.symmetry_cfg = {**sym, "data_augmentation_func": GOAL_SYMMETRY_FUNC}
+  return cfg
+
+
 def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return RslRlOnPolicyRunnerCfg(
     actor=AmeModelCfg(
@@ -242,6 +255,7 @@ def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
 
 
 __all__ = [
+  "GOAL_SYMMETRY_FUNC",
   "NUM_MINI_BATCHES",
   "AmeModelCfg",
   "DeltaModelCfg",
@@ -251,4 +265,5 @@ __all__ = [
   "ame_symmetric_ppo_runner_cfg",
   "delta_ppo_runner_cfg",
   "double_critic_ppo_runner_cfg",
+  "goal_double_critic_ppo_runner_cfg",
 ]

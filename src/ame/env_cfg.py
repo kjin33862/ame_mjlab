@@ -36,7 +36,10 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
+from mjlab.managers.observation_manager import ObservationTermCfg
+from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
+from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.tasks.velocity.config.g1.env_cfgs import unitree_g1_rough_env_cfg
 from mjlab.tasks.velocity.mdp.rewards import feet_clearance as mjlab_feet_clearance
 from mjlab.tasks.velocity.mdp.rewards import (
@@ -58,11 +61,30 @@ from ame.mdp.events import (
   reset_root_state_on_patches,
 )
 from ame.mdp.foothold import (
+  FEET_CONTACT_SENSOR,
   FOOTHOLD_DELTA,
   FOOTHOLD_WEIGHT,
   SOLE_SCAN_SENSOR,
   foot_sole_scan_cfg,
   foothold_reward_cfg,
+)
+from ame.mdp.goal import (
+  GAIT_COMMAND,
+  GOAL_COMMAND,
+  GOAL_OBS_CLIP,
+  GOAL_YAW_SCHEDULE,
+  GoalCommandCfg,
+  GoalGaitCommandCfg,
+  goal_distance,
+  goal_heading_tracking,
+  goal_move_to_goal,
+  goal_obs,
+  goal_position_tracking,
+  goal_stagnation,
+  goal_stand_at_goal,
+  terrain_levels_sgs_goal,
+  time_left,
+  velocity_stagnation,
 )
 from ame.mdp.metrics import (
   command_speed,
@@ -371,6 +393,216 @@ def apply_swing_diagnostics(cfg: Any) -> None:
   cfg.metrics["swing_cost_by_gap"] = swing_diagnostics_cfg()
 
 
+STAGNATION = {
+  "command_threshold": 0.3,
+  "distance_threshold": 0.5,
+  "time_window": 5.0,
+}
+"""Velocity-task stall guard (:class:`ame.mdp.velocity_stagnation`): the
+command asked for more than 0.3 m/s for the last 5 s and the pelvis moved less
+than 0.5 m horizontally."""
+
+
+def apply_action_rate_weight(cfg: Any, weight: float) -> None:
+  """Set the ``action_rate_l2`` reward's weight."""
+  if "action_rate_l2" not in cfg.rewards:
+    raise ValueError("no action_rate_l2 reward")
+  cfg.rewards["action_rate_l2"].weight = float(weight)
+
+
+def apply_velocity_stagnation(cfg: Any, command_name: str = "twist") -> None:
+  """Add the ``stagnation`` termination (``STAGNATION``); not a time-out, so
+  the task's ``termination_penalty`` (mjlab ``is_terminated``) charges it."""
+  cfg.terminations["stagnation"] = TerminationTermCfg(
+    func=velocity_stagnation,
+    params={"command_name": command_name, **STAGNATION},
+  )
+
+
+GOAL_EPISODE_S = 16.0
+"""Official episode length (``episode_length_s = 16.0``)."""
+
+GOAL_REWARDS = {
+  "goal_position": 100.0,
+  "goal_heading": 50.0,
+  "move_to_goal": 5.0,
+  "stand_at_goal": 5.0,
+}
+"""AME-2's four task rewards and their official weights."""
+
+GOAL_TERMINATION_PENALTY = -10.0 / 0.02
+"""AME-2's early-termination penalty, -10 / dt at dt = 0.02 s (official
+weight -500 on ``ame2_is_terminated_term``): -10 per early termination after
+the reward manager's dt scaling."""
+
+GOAL_ACTION_RATE = -0.025
+
+VELOCITY_ONLY_REWARDS = ("track_linear_velocity", "track_angular_velocity")
+VELOCITY_ONLY_METRICS = (
+  "pelvis_vel_error",
+  "pelvis_yaw_error",
+  "pelvis_progress",
+  "command_speed",
+)
+
+
+def _retarget_command(terms: dict[str, Any], old: str, new: str) -> None:
+  for term in terms.values():
+    params = getattr(term, "params", None)
+    if params and params.get("command_name") == old:
+      params["command_name"] = new
+
+
+def apply_goal_task(cfg: Any) -> None:
+  """Turn the gap velocity task into AME-2-style goal reaching, in place.
+
+  * commands: ``twist`` -> ``goal`` (:class:`ame.mdp.GoalCommandCfg`) plus
+    the derived ``gait`` twist (:class:`ame.mdp.GoalGaitCommandCfg`) that the
+    command-gated regularisers and the posture regime now read;
+  * observations: the actor's ``command`` is the goal clipped to 2 m with
+    the heading error as sin / cos; the critic's is the unclipped goal,
+    followed by ``time_left``;
+  * rewards: velocity tracking removed, the four AME-2 task rewards added,
+    ``termination_penalty`` -10 / dt, ``action_rate_l2`` -0.025;
+  * terminations: ``stagnation`` (:class:`ame.mdp.goal_stagnation`);
+  * metrics: velocity-command metrics removed, ``goal_distance`` (last)
+    added; episode length 16 s; spawn-yaw curriculum on the centre spawn.
+
+  Needs the centre spawn; the curriculum term is installed by
+  :func:`ame_goal_env_cfg` (training only)."""
+  if "twist" not in cfg.commands:
+    raise ValueError("apply_goal_task needs the twist command to replace")
+  del cfg.commands["twist"]
+  cfg.commands[GOAL_COMMAND] = GoalCommandCfg()
+  cfg.commands[GAIT_COMMAND] = GoalGaitCommandCfg()
+
+  actor = cfg.observations["actor"].terms
+  critic = cfg.observations["critic"].terms
+  for name, group in (("actor", actor), ("critic", critic)):
+    if "command" not in group:
+      raise ValueError(f"the {name} group has no command term")
+  actor["command"] = ObservationTermCfg(
+    func=goal_obs, params={"command_name": GOAL_COMMAND, "dist_clip": GOAL_OBS_CLIP}
+  )
+  rebuilt: dict[str, Any] = {}
+  for key, term in critic.items():
+    if key == "command":
+      rebuilt[key] = ObservationTermCfg(
+        func=goal_obs, params={"command_name": GOAL_COMMAND, "dist_clip": None}
+      )
+      rebuilt["time_left"] = ObservationTermCfg(func=time_left)
+    else:
+      rebuilt[key] = term
+  cfg.observations["critic"].terms = rebuilt
+
+  for name in VELOCITY_ONLY_REWARDS:
+    cfg.rewards.pop(name)
+  for name in VELOCITY_ONLY_METRICS:
+    cfg.metrics.pop(name, None)
+  _retarget_command(cfg.rewards, "twist", GAIT_COMMAND)
+  _retarget_command(cfg.metrics, "twist", GAIT_COMMAND)
+  cfg.rewards["goal_position"] = RewardTermCfg(
+    func=goal_position_tracking,
+    weight=GOAL_REWARDS["goal_position"],
+    params={"command_name": GOAL_COMMAND, "T": 4.0, "std": 2.0},
+  )
+  cfg.rewards["goal_heading"] = RewardTermCfg(
+    func=goal_heading_tracking,
+    weight=GOAL_REWARDS["goal_heading"],
+    params={"command_name": GOAL_COMMAND, "T": 2.0, "dist_thr": 0.5},
+  )
+  cfg.rewards["move_to_goal"] = RewardTermCfg(
+    func=goal_move_to_goal,
+    weight=GOAL_REWARDS["move_to_goal"],
+    params={
+      "command_name": GOAL_COMMAND,
+      "v_min": 0.3,
+      "v_max": 2.0,
+      "cos_thr": 0.5,
+      "dist_thr": 0.5,
+      "asset_cfg": SceneEntityCfg("robot", body_names=("torso_link",)),
+    },
+  )
+  cfg.rewards["stand_at_goal"] = RewardTermCfg(
+    func=goal_stand_at_goal,
+    weight=GOAL_REWARDS["stand_at_goal"],
+    params={
+      "command_name": GOAL_COMMAND,
+      "sensor_name": FEET_CONTACT_SENSOR,
+      "dist_thr": 0.5,
+      "yaw_thr": 0.5,
+    },
+  )
+  if "termination_penalty" not in cfg.rewards:
+    raise ValueError("no termination_penalty reward (needs ame_contact)")
+  cfg.rewards["termination_penalty"].weight = GOAL_TERMINATION_PENALTY
+  apply_action_rate_weight(cfg, GOAL_ACTION_RATE)
+
+  cfg.terminations["stagnation"] = TerminationTermCfg(
+    func=goal_stagnation,
+    params={
+      "command_name": GOAL_COMMAND,
+      "distance_threshold": 0.5,
+      "goal_distance_threshold": 1.0,
+      "time_window": 5.0,
+    },
+  )
+  cfg.metrics["goal_distance"] = MetricsTermCfg(
+    func=goal_distance, params={"command_name": GOAL_COMMAND}, reduce="last"
+  )
+  cfg.episode_length_s = GOAL_EPISODE_S
+
+  reset = cfg.events.get("reset_base")
+  if reset is None or reset.func is not reset_root_state_at_centre:
+    raise ValueError("apply_goal_task needs the centre spawn")
+  reset.params["yaw_schedule"] = dict(GOAL_YAW_SCHEDULE)
+
+
+def apply_goal_success(cfg: Any) -> None:
+  """SGS with AME-2's goal-reached success
+  (:class:`ame.mdp.terrain_levels_sgs_goal`): replaces the edge-success term;
+  floor, spawn rows, ``hold_steps`` and the SGS parameters are kept."""
+  term = cfg.curriculum.get("terrain_levels")
+  if term is None or term.func not in (terrain_levels_sgs, terrain_levels_sgs_edge):
+    raise ValueError("apply_goal_success needs an SGS terrain_levels term")
+  term.func = terrain_levels_sgs_goal
+  term.params = {
+    "command_name": GOAL_COMMAND,
+    "floor": term.params["floor"],
+    "hold_steps": term.params.get("hold_steps", 0),
+    "sgs": dict(term.params["sgs"]),
+    "reach_distance": 0.5,
+    "reach_time_left": 4.0,
+  }
+
+
+def ame_gap_ar_stag_env_cfg(play: bool = False, **flags: Any) -> ManagerBasedRlEnvCfg:
+  """:func:`ame_gap_env_cfg` with ``action_rate_l2`` at ``GOAL_ACTION_RATE``
+  and the velocity ``stagnation`` termination; nothing else changes."""
+  cfg = ame_gap_env_cfg(play=play, **flags)
+  apply_action_rate_weight(cfg, GOAL_ACTION_RATE)
+  apply_velocity_stagnation(cfg)
+  return cfg
+
+
+def ame_goal_env_cfg(play: bool = False, **flags: Any) -> ManagerBasedRlEnvCfg:
+  """The goal-reaching task: :func:`ame_gap_env_cfg` (training board, centre
+  spawn, SGS with ``flags``) under :func:`apply_goal_task` and
+  :func:`apply_goal_success`.  ``play`` keeps the training board (goals are
+  placed per tile) and drops the curriculum term, observation noise and
+  pushes, with a small scene."""
+  cfg = ame_gap_env_cfg(play=False, **flags)
+  apply_goal_task(cfg)
+  apply_goal_success(cfg)
+  if play:
+    cfg.scene.num_envs = 32
+    cfg.curriculum.pop("terrain_levels", None)
+    cfg.events.pop("push_robot", None)
+    for group in cfg.observations.values():
+      group.enable_corruption = False
+  return cfg
+
+
 def ame_rough_env_cfg(
   play: bool = False,
   rewards: str = "ame2_rebalanced",
@@ -519,20 +751,30 @@ def ame_gap_env_cfg(
 __all__ = [
   "EDGE_DISTANCE",
   "GAP_CURRICULUM",
+  "GOAL_ACTION_RATE",
+  "GOAL_EPISODE_S",
+  "GOAL_REWARDS",
+  "GOAL_TERMINATION_PENALTY",
   "NUM_ENVS",
   "REWARD_STACKS",
   "STAGE_REWARDS",
+  "STAGNATION",
   "STRIDE_FREE_WALKING_STD_SCALE",
   "TWIST_RANGES",
   "add_tracking_metrics",
+  "ame_gap_ar_stag_env_cfg",
   "ame_gap_env_cfg",
+  "ame_goal_env_cfg",
   "ame_rough_env_cfg",
   "ame_stage_env_cfg",
+  "apply_action_rate_weight",
   "apply_centre_spawn",
   "apply_deploy_observations",
   "apply_edge_success",
   "apply_foot_sole_scan",
   "apply_foothold",
+  "apply_goal_success",
+  "apply_goal_task",
   "apply_heading_commands",
   "apply_lin_vel_ema",
   "apply_one_sided_clearance",
@@ -544,5 +786,6 @@ __all__ = [
   "apply_terrain",
   "apply_terrain_floor",
   "apply_twist_commands",
+  "apply_velocity_stagnation",
   "apply_walking_posture_std_scale",
 ]

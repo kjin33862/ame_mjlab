@@ -191,6 +191,10 @@ class reset_root_state_at_centre:
       raise ValueError("a spawn ray missed the terrain")
     self.heights = torch.tensor(heights, dtype=torch.float32, device=device)
     self.resolution, self.n_disc = res, n_disc
+    # Optional spawn-yaw curriculum (the goal task): ``{"steps", "limit"}``,
+    # the heading range growing from 0 to +/- limit over ``steps`` env steps.
+    # Absent, the heading is uniform in (-pi, pi) as before.
+    self.yaw_schedule = cfg.params.get("yaw_schedule")
 
   def __call__(
     self,
@@ -202,9 +206,10 @@ class reset_root_state_at_centre:
     footprint: float | None = None,
     resolution: float | None = None,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    yaw_schedule: dict[str, float] | None = None,
   ) -> None:
     # Resolved at construction.
-    del offset_radius, stone_jitter, z, footprint, resolution
+    del offset_radius, stone_jitter, z, footprint, resolution, yaw_schedule
     if env_ids is None:
       env_ids = torch.arange(env.num_envs, device=env.device)
     n = len(env_ids)
@@ -233,7 +238,13 @@ class reset_root_state_at_centre:
     root = asset.data.default_root_state[env_ids].clone()
     lift = torch.empty(n, device=env.device).uniform_(*self.z_range)
     positions = root[:, 0:3] + torch.stack([xy[:, 0], xy[:, 1], ground + lift], dim=1)
-    yaw = (torch.rand(n, device=env.device) * 2 - 1) * math.pi
+    yaw_limit = math.pi
+    if self.yaw_schedule is not None:
+      progress = min(
+        float(env.common_step_counter) / max(int(self.yaw_schedule["steps"]), 1), 1.0
+      )
+      yaw_limit = progress * float(self.yaw_schedule["limit"])
+    yaw = (torch.rand(n, device=env.device) * 2 - 1) * yaw_limit
     zeros = torch.zeros(n, device=env.device)
     orientations = quat_mul(root[:, 3:7], quat_from_euler_xyz(zeros, zeros, yaw))
     asset.write_root_link_pose_to_sim(

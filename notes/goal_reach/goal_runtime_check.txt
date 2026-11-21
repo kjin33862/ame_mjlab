@@ -1,0 +1,18 @@
+step_dt 0.02  max_episode_length 800
+cone at step 0: 10.0 deg
+stepping_stones      n= 24 d_centre [1.15, 3.41] bearing [-11.3, +11.3] deg cheb max 3.40 d_spawn [0.82, 4.06]
+pyramid_stairs       n= 13 d_centre [2.31, 3.48] bearing [-2.8, +3.1] deg cheb max 3.48 d_spawn [2.13, 3.48]
+pyramid_stairs_inv   n= 13 d_centre [2.14, 3.43] bearing [-4.1, +2.0] deg cheb max 3.43 d_spawn [1.83, 3.80]
+wave                 n=  7 d_centre [1.09, 3.29] bearing [-8.9, +8.5] deg cheb max 3.25 d_spawn [1.02, 3.38]
+random_rough         n=  7 d_centre [1.00, 3.31] bearing [-9.5, +6.3] deg cheb max 3.30 d_spawn [0.58, 3.67]
+lattice goals: max distance to a stone centre 0.00e+00 m
+heading_w range [-59.0, 57.4] deg
+actor goal xy == clip(critic goal xy): True
+near envs: actor sin/cos == critic: True
+critic sin^2+cos^2 = 1: True
+time_left at reset: [1.0000, 1.0000]
+time_left decrement per step: 0.001250 (expected 0.001250)
+first stagnation at step 501: 54 envs (envs with goal > 1 m before the step: 54)
+terminated-step termination_penalty raw*weight values (x dt=0.02 -> per-step reward): [[-500.0]]
+goal_position before the last 4 s: 0.0, goal_heading: 0.0
+stagnation first fired at step 501 (window 250)

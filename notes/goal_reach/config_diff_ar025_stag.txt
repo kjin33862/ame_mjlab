@@ -1,0 +1,24 @@
+=== env (train): 8 changed lines
+@@ -902 +902 @@
+-weight=-0.1),
++weight=-0.025),
+@@ -1004,0 +1005,6 @@
++time_out=False),
++'stagnation': TerminationTermCfg(func=<class 'ame.mdp.goal.velocity_stagnation'>,
++params={'command_name': 'twist',
++'command_threshold': 0.3,
++'distance_threshold': 0.5,
++'time_window': 5.0},
+=== env (play): 8 changed lines
+@@ -899 +899 @@
+-weight=-0.1),
++weight=-0.025),
+@@ -998,0 +999,6 @@
++time_out=False),
++'stagnation': TerminationTermCfg(func=<class 'ame.mdp.goal.velocity_stagnation'>,
++params={'command_name': 'twist',
++'command_threshold': 0.3,
++'distance_threshold': 0.5,
++'time_window': 5.0},
+=== rl: 0 changed lines
+

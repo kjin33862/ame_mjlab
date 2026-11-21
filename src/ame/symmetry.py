@@ -148,6 +148,28 @@ def _mirror_proprio(
   Layout: [base_lin_vel(3)] base_ang_vel(3) projected_gravity(3)
   joint_pos(29) joint_vel(29) actions(29) command(3) [critic extras...].
   """
+  # command (vx, vy, wz): lateral and yaw flip
+  return _mirror_group(group, has_lin_vel, cache, VELOCITY_COMMAND_SIGN, 0)
+
+
+VELOCITY_COMMAND_SIGN = (1.0, -1.0, -1.0)
+"""Mirror signs of the velocity command ``(vx, vy, wz)``."""
+
+GOAL_COMMAND_SIGN = (1.0, -1.0, -1.0, 1.0)
+"""Mirror signs of the goal observation ``(x, y, sin e, cos e)``: y -> -y and
+the heading error e -> -e, so sin flips and cos does not."""
+
+
+def _mirror_group(
+  group: torch.Tensor,
+  has_lin_vel: bool,
+  cache: dict,
+  command_sign: tuple[float, ...],
+  invariant_after_command: int,
+) -> torch.Tensor:
+  """Mirror ``[lin_vel(3)] ang_vel(3) gravity(3) joint_pos joint_vel
+  actions command(len(command_sign)) invariant(invariant_after_command)
+  [per-foot pairs...]``."""
   out = group.clone()
   i = 0
   if has_lin_vel:  # linear velocity: y flips
@@ -162,10 +184,11 @@ def _mirror_proprio(
   for _ in range(3):  # joint_pos, joint_vel, actions
     out[:, i : i + 29] = mirror_joints(group[:, i : i + 29], cache)
     i += 29
-  # command (vx, vy, wz): lateral and yaw flip
-  out[:, i + 1] = -out[:, i + 1]
-  out[:, i + 2] = -out[:, i + 2]
-  i += 3
+  for k, sign in enumerate(command_sign):
+    if sign < 0:
+      out[:, i + k] = -out[:, i + k]
+  i += len(command_sign)
+  i += invariant_after_command  # e.g. the critic's time left
   # Critic extras are all per-foot pairs (height, air time, contact, forces);
   # mirroring swaps the two feet.  Any remainder is a multiple of 2.
   rest = group.shape[1] - i
@@ -173,6 +196,12 @@ def _mirror_proprio(
     tail = group[:, i:].reshape(group.shape[0], -1, 2)
     out[:, i:] = torch.flip(tail, dims=(2,)).reshape(group.shape[0], -1)
   return out
+
+
+GOAL_GROUP_LAYOUT = {"actor": (False, 0), "critic": (True, 1)}
+"""Goal task proprio groups: ``(has base_lin_vel, invariant width after the
+goal)`` -- the actor has neither (deployment set, no time input); the critic
+has the privileged velocity and the time-left scalar right after the goal."""
 
 
 def mirror_obs_actions(
@@ -201,7 +230,40 @@ def mirror_obs_actions(
   return out_obs, out_actions
 
 
+def mirror_obs_actions_goal(
+  env: Any, obs: TensorDict | None = None, actions: torch.Tensor | None = None
+) -> tuple[TensorDict | None, torch.Tensor | None]:
+  """:func:`mirror_obs_actions` for the goal task: the groups are told apart
+  by name (``GOAL_GROUP_LAYOUT``), not by width parity, and the goal block
+  mirrors as ``(x, -y, -sin e, cos e)``."""
+  del env
+  out_obs = None
+  if obs is not None:
+    mirrored = {}
+    for key, value in obs.items():
+      if key == "height_map":
+        mirrored[key] = mirror_map(value)
+      elif key in GOAL_GROUP_LAYOUT:
+        lin_vel, invariant = GOAL_GROUP_LAYOUT[key]
+        mirrored[key] = _mirror_group(
+          value, lin_vel, _tensors(value.device), GOAL_COMMAND_SIGN, invariant
+        )
+      else:
+        raise KeyError(f"no goal-task mirror for observation group {key!r}")
+    out_obs = cast(
+      TensorDict,
+      torch.cat([obs, TensorDict(mirrored, batch_size=obs.batch_size)], dim=0),
+    )
+  out_actions = None
+  if actions is not None:
+    cache = _tensors(actions.device)
+    out_actions = torch.cat([actions, mirror_joints(actions, cache)], dim=0)
+  return out_obs, out_actions
+
+
 __all__ = [
+  "GOAL_COMMAND_SIGN",
+  "GOAL_GROUP_LAYOUT",
   "JOINT_NAMES",
   "JOINT_PERM",
   "JOINT_SIGN",
@@ -210,4 +272,5 @@ __all__ = [
   "mirror_joints",
   "mirror_map",
   "mirror_obs_actions",
+  "mirror_obs_actions_goal",
 ]

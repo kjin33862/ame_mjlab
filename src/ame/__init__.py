@@ -60,7 +60,17 @@ reused on other tasks.  Importing the package (mjlab does it through the
   — the FootholdD30 task with ``track_linear_velocity`` on a 1.0 s moving
   average of the pelvis's yaw-frame xy velocity (``lin_vel_ema_tau``) and the
   ``pose`` walking std of hip pitch, hip roll and knee doubled
-  (``walking_posture_std_scale``); weights and the tracking std unchanged.
+  (``walking_posture_std_scale``); weights and the tracking std unchanged;
+* ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-AR025-Stag-Velocity-Rough-G1``
+  — the FootholdD30 task with ``action_rate_l2`` at -0.025 instead of -0.1 and a
+  ``stagnation`` termination (command above 0.3 m/s for 5 s, pelvis moved
+  < 0.5 m), charged by the existing ``termination_penalty``;
+* ``Ame-Mjlab-Gap-Edge-AlphaNIST-Contact-FootholdD30-GoalReach-Rough-G1`` —
+  AME-2-style goal reaching on the FootholdD30 board (``ame_goal_env_cfg``):
+  one goal per 16 s episode, the four AME-2 task rewards in place of velocity
+  tracking, AME-2's stagnation termination and -10/dt termination penalty,
+  ``action_rate_l2`` -0.025, SGS success = goal reached
+  (notes/goal_reach/report.md).
 
 Train / play with mjlab's own CLIs::
 
@@ -77,7 +87,9 @@ from mjlab.tasks.registry import register_mjlab_task
 from ame.env_cfg import (
   EDGE_DISTANCE,
   STRIDE_FREE_WALKING_STD_SCALE,
+  ame_gap_ar_stag_env_cfg,
   ame_gap_env_cfg,
+  ame_goal_env_cfg,
   ame_rough_env_cfg,
   ame_stage_env_cfg,
 )
@@ -86,6 +98,7 @@ from ame.rl_cfg import (
   ame_symmetric_ppo_runner_cfg,
   delta_ppo_runner_cfg,
   double_critic_ppo_runner_cfg,
+  goal_double_critic_ppo_runner_cfg,
 )
 
 register_mjlab_task(
@@ -395,4 +408,41 @@ register_mjlab_task(
     **STRIDE_FREE_FLAGS,
   ),
   rl_cfg=double_critic_ppo_runner_cfg(),
+)
+
+AR025_STAG_TASK = (
+  "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-AR025-Stag-Velocity-Rough-G1"
+)
+FOOTHOLD_D30_GAP_FLAGS = {
+  "rule": "progress",
+  "heading_command": True,
+  "sgs": True,
+  "ang_vel_weight": 4.0,
+  "ang_vel_z_only": True,
+  "ame_contact": True,
+  **FOOTHOLD_D30_TASK_FLAGS,
+}
+"""The FootholdD30 task's ``ame_gap_env_cfg`` flags shared by train and play
+(training adds the SGS params, the centre spawn and the edge distance)."""
+FOOTHOLD_D30_TRAIN_FLAGS = {
+  **FOOTHOLD_D30_GAP_FLAGS,
+  "sgs_params": ALPHANIST_MIX20_SGS_PARAMS,
+  "centre_spawn": True,
+  "edge_distance": EDGE_DISTANCE,
+}
+
+register_mjlab_task(
+  task_id=AR025_STAG_TASK,
+  env_cfg=ame_gap_ar_stag_env_cfg(**FOOTHOLD_D30_TRAIN_FLAGS),
+  play_env_cfg=ame_gap_ar_stag_env_cfg(play=True, **FOOTHOLD_D30_GAP_FLAGS),
+  rl_cfg=double_critic_ppo_runner_cfg(),
+)
+
+GOAL_REACH_TASK = "Ame-Mjlab-Gap-Edge-AlphaNIST-Contact-FootholdD30-GoalReach-Rough-G1"
+
+register_mjlab_task(
+  task_id=GOAL_REACH_TASK,
+  env_cfg=ame_goal_env_cfg(**FOOTHOLD_D30_TRAIN_FLAGS),
+  play_env_cfg=ame_goal_env_cfg(play=True, **FOOTHOLD_D30_TRAIN_FLAGS),
+  rl_cfg=goal_double_critic_ppo_runner_cfg(),
 )

@@ -8,6 +8,7 @@
 - 기존 30개 태스크의 env(train/play)·agent config 해시는 51b5d6f와 **완전히 동일**합니다(§5).
 - 공식 코드와 다른 부분은 대부분 **보드 차이(8 m 타일, 5개 family, flat-patch 샘플러 없음)** 와 **우리 쪽에서 유지하기로 한 것(SGS, foothold+double critic, mjlab 정규화 항, ame_contact 종료)** 때문입니다. 보상 4개·stagnation·종료 패널티·관측 포맷·성공 기준·yaw/cone 커리큘럼 스케줄은 공식 수식·값 그대로입니다(§2).
 - 속도: 2080 Ti에서 **약 10 s/iteration** → 10k it는 약 28 시간. 아침(약 8 시간 후)에는 **약 2.5–3k iteration**이 되어 있을 것입니다. 1k–2k 구간의 정상/실패 판정 기준은 §8.
+- **push 안 됨**: `git push mine goal-reach`가 `could not read Username for 'https://github.com'`로 실패했습니다. 이 셸에는 credential helper, `gh`, SSH 키가 없습니다. 커밋은 로컬 `goal-reach` 브랜치에 있으니 아침에 `git push mine goal-reach` 한 번만 실행하면 됩니다.
 - 주의할 점 하나: 공식 stagnation은 **3-D** root 변위를 씁니다. 그래서 넘어지는 동작(루트 0.75 m → 0.1 m) 자체가 첫 5 s 창에서는 "움직임"으로 셉니다. 우리 태스크에서는 넘어지면 contact 종료가 먼저 걸리므로 실제 영향은 없고, 런타임 검사에서 이 동작을 확인했습니다(§6).
 
 ## 1. Step 0 — 저장소 확인

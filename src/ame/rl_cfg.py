@@ -208,6 +208,17 @@ def goal_double_critic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return cfg
 
 
+FOOTHOLD_V2_GROUP_TERMS = ("foothold_v2",)
+"""The FootholdV2-Progress task's group-2 terms; ``progress_shortfall`` stays in
+group 1 with every other term."""
+
+
+def foothold_v2_double_critic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """:func:`double_critic_ppo_runner_cfg` with ``foothold_v2`` as the group-2
+  term; advantage weights (1.0, 0.25) and everything else unchanged."""
+  return double_critic_ppo_runner_cfg(reward_group_terms=FOOTHOLD_V2_GROUP_TERMS)
+
+
 def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return RslRlOnPolicyRunnerCfg(
     actor=AmeModelCfg(
@@ -255,6 +266,7 @@ def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
 
 
 __all__ = [
+  "FOOTHOLD_V2_GROUP_TERMS",
   "GOAL_SYMMETRY_FUNC",
   "NUM_MINI_BATCHES",
   "AmeModelCfg",
@@ -265,5 +277,6 @@ __all__ = [
   "ame_symmetric_ppo_runner_cfg",
   "delta_ppo_runner_cfg",
   "double_critic_ppo_runner_cfg",
+  "foothold_v2_double_critic_ppo_runner_cfg",
   "goal_double_critic_ppo_runner_cfg",
 ]

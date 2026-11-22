@@ -68,6 +68,10 @@ from ame.mdp.foothold import (
   foot_sole_scan_cfg,
   foothold_reward_cfg,
 )
+from ame.mdp.foothold_v2 import (
+  foothold_v2_reward_cfg,
+  progress_shortfall_reward_cfg,
+)
 from ame.mdp.goal import (
   GAIT_COMMAND,
   GOAL_COMMAND,
@@ -585,6 +589,29 @@ def ame_gap_ar_stag_env_cfg(play: bool = False, **flags: Any) -> ManagerBasedRlE
   return cfg
 
 
+def apply_foothold_v2_progress(cfg: Any) -> None:
+  """Swap the ``foothold`` term for ``foothold_v2`` (:mod:`ame.mdp.foothold_v2`:
+  per-touchdown x^2 of the off fraction, delta 0.05 m, weight -1) and add
+  ``progress_shortfall`` (weight -2).  The ``foot_sole_scan`` sensor is kept
+  (``foothold_v2`` reads it); every other term is untouched."""
+  if "foothold" not in cfg.rewards:
+    raise ValueError("apply_foothold_v2_progress needs the foothold term")
+  apply_foot_sole_scan(cfg)
+  del cfg.rewards["foothold"]
+  cfg.rewards["foothold_v2"] = foothold_v2_reward_cfg()
+  cfg.rewards["progress_shortfall"] = progress_shortfall_reward_cfg()
+
+
+def ame_gap_foothold_v2_env_cfg(
+  play: bool = False, **flags: Any
+) -> ManagerBasedRlEnvCfg:
+  """:func:`ame_gap_env_cfg` with ``flags`` (the FootholdD30 task's) under
+  :func:`apply_foothold_v2_progress`; nothing else changes."""
+  cfg = ame_gap_env_cfg(play=play, **flags)
+  apply_foothold_v2_progress(cfg)
+  return cfg
+
+
 def ame_goal_env_cfg(play: bool = False, **flags: Any) -> ManagerBasedRlEnvCfg:
   """The goal-reaching task: :func:`ame_gap_env_cfg` (training board, centre
   spawn, SGS with ``flags``) under :func:`apply_goal_task` and
@@ -764,6 +791,7 @@ __all__ = [
   "add_tracking_metrics",
   "ame_gap_ar_stag_env_cfg",
   "ame_gap_env_cfg",
+  "ame_gap_foothold_v2_env_cfg",
   "ame_goal_env_cfg",
   "ame_rough_env_cfg",
   "ame_stage_env_cfg",
@@ -773,6 +801,7 @@ __all__ = [
   "apply_edge_success",
   "apply_foot_sole_scan",
   "apply_foothold",
+  "apply_foothold_v2_progress",
   "apply_goal_success",
   "apply_goal_task",
   "apply_heading_commands",

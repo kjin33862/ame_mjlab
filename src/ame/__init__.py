@@ -71,6 +71,12 @@ reused on other tasks.  Importing the package (mjlab does it through the
   tracking, AME-2's stagnation termination and -10/dt termination penalty,
   ``action_rate_l2`` -0.025, SGS success = goal reached
   (notes/goal_reach/report.md).
+* ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdV2-Progress-Velocity-Rough-G1``
+  — the FootholdD30 task (same flags) with the ``foothold`` term replaced by
+  ``foothold_v2`` (per touchdown, x^2 of the sole off fraction over the first
+  0.1 s of stance, delta 0.05 m, weight -1, double-critic group 2) and a
+  ``progress_shortfall`` term (max(0, 0.8 - progress ratio over 1 s), weight -2,
+  group 1) (:mod:`ame.mdp.foothold_v2`, notes/feasibility_v2/report.md).
 
 Train / play with mjlab's own CLIs::
 
@@ -89,6 +95,7 @@ from ame.env_cfg import (
   STRIDE_FREE_WALKING_STD_SCALE,
   ame_gap_ar_stag_env_cfg,
   ame_gap_env_cfg,
+  ame_gap_foothold_v2_env_cfg,
   ame_goal_env_cfg,
   ame_rough_env_cfg,
   ame_stage_env_cfg,
@@ -98,6 +105,7 @@ from ame.rl_cfg import (
   ame_symmetric_ppo_runner_cfg,
   delta_ppo_runner_cfg,
   double_critic_ppo_runner_cfg,
+  foothold_v2_double_critic_ppo_runner_cfg,
   goal_double_critic_ppo_runner_cfg,
 )
 
@@ -445,4 +453,15 @@ register_mjlab_task(
   env_cfg=ame_goal_env_cfg(**FOOTHOLD_D30_TRAIN_FLAGS),
   play_env_cfg=ame_goal_env_cfg(play=True, **FOOTHOLD_D30_TRAIN_FLAGS),
   rl_cfg=goal_double_critic_ppo_runner_cfg(),
+)
+
+FOOTHOLD_V2_PROGRESS_TASK = (
+  "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdV2-Progress-Velocity-Rough-G1"
+)
+
+register_mjlab_task(
+  task_id=FOOTHOLD_V2_PROGRESS_TASK,
+  env_cfg=ame_gap_foothold_v2_env_cfg(**FOOTHOLD_D30_TRAIN_FLAGS),
+  play_env_cfg=ame_gap_foothold_v2_env_cfg(play=True, **FOOTHOLD_D30_GAP_FLAGS),
+  rl_cfg=foothold_v2_double_critic_ppo_runner_cfg(),
 )

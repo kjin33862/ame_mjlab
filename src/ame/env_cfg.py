@@ -104,7 +104,12 @@ from ame.mdp.swing import (
   feet_swing_height_one_sided,
   swing_diagnostics_cfg,
 )
-from ame.reward_cfg import apply_ame2_contact, apply_ame2_rewards, rebalance
+from ame.reward_cfg import (
+  apply_ame2_contact,
+  apply_ame2_rewards,
+  apply_ame2_torso_termination,
+  rebalance,
+)
 from ame.scan import apply_scan
 from ame.terrains import (
   ame_terrains_cfg,
@@ -612,6 +617,19 @@ def ame_gap_foothold_v2_env_cfg(
   return cfg
 
 
+def ame_gap_ame2_contact_env_cfg(
+  play: bool = False, **flags: Any
+) -> ManagerBasedRlEnvCfg:
+  """:func:`ame_gap_env_cfg` with ``flags`` (the FootholdD30 task's, which
+  include ``ame_contact``) under AME-2's contact rule
+  (:func:`ame.reward_cfg.apply_ame2_torso_termination`: no termination on a
+  non-foot contact, which ``undesired_contacts`` penalises; terminate on a
+  torso / pelvis force > 400 N); nothing else changes."""
+  cfg = ame_gap_env_cfg(play=play, **flags)
+  apply_ame2_torso_termination(cfg)
+  return cfg
+
+
 def ame_goal_env_cfg(play: bool = False, **flags: Any) -> ManagerBasedRlEnvCfg:
   """The goal-reaching task: :func:`ame_gap_env_cfg` (training board, centre
   spawn, SGS with ``flags``) under :func:`apply_goal_task` and
@@ -789,6 +807,7 @@ __all__ = [
   "STRIDE_FREE_WALKING_STD_SCALE",
   "TWIST_RANGES",
   "add_tracking_metrics",
+  "ame_gap_ame2_contact_env_cfg",
   "ame_gap_ar_stag_env_cfg",
   "ame_gap_env_cfg",
   "ame_gap_foothold_v2_env_cfg",

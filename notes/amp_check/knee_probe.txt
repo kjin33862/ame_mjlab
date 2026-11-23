@@ -1,0 +1,8 @@
+AngW4Z-AME2Contact-FootholdD30-AMP-Velocity-Rough-G1
+env-steps with knee force > 1 N: 468; undesired_contacts <= -1 on those: 468; terminated on those: 48
+terminations (all): {'time_out': 0, 'fell_over': 377, 'out_of_terrain_bounds': 0, 'torso_collision': 4}
+terminations on knee-contact steps: {'time_out': 0, 'fell_over': 46, 'out_of_terrain_bounds': 0, 'torso_collision': 2}
+AngW4Z-Contact-FootholdD30-Velocity-Rough-G1
+env-steps with knee force > 1 N: 3; undesired_contacts <= -1 on those: 3; terminated on those: 3
+terminations (all): {'time_out': 0, 'fell_over': 10, 'out_of_terrain_bounds': 0, 'illegal_contact': 2106}
+terminations on knee-contact steps: {'time_out': 0, 'fell_over': 0, 'out_of_terrain_bounds': 0, 'illegal_contact': 3}

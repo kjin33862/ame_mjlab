@@ -219,6 +219,40 @@ def foothold_v2_double_critic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return double_critic_ppo_runner_cfg(reward_group_terms=FOOTHOLD_V2_GROUP_TERMS)
 
 
+@dataclass
+class AmpDoubleCriticPpoCfg(DoubleCriticPpoCfg):
+  """:class:`ame.amp.AmpDoubleCriticPPO`: the double critic plus AMP, with
+  AMP_mjlab's default AMP settings (see :mod:`ame.amp`).  The style reward is
+  mixed into group 1; group 2 and ``advantage_weights`` are unchanged."""
+
+  amp_motion_dir: str = "~/ref/amp_mjlab_npz/amp"
+  amp_reward_coef: float = 0.1
+  amp_task_reward_lerp: float = 0.75
+  amp_discr_hidden_dims: tuple[int, ...] = (1024, 512, 256)
+  amp_replay_buffer_size: int = 100_000
+  amp_grad_pen_lambda: float = 10.0
+  class_name: str = "ame.amp:AmpDoubleCriticPPO"
+
+
+def amp_runner_cfg(cfg: RslRlOnPolicyRunnerCfg) -> RslRlOnPolicyRunnerCfg:
+  """A double-critic runner cfg with its algorithm swapped for
+  :class:`AmpDoubleCriticPpoCfg`; every PPO / double-critic field is kept."""
+  alg = dataclasses.asdict(cfg.algorithm)
+  alg.pop("class_name")
+  cfg.algorithm = AmpDoubleCriticPpoCfg(**alg)
+  return cfg
+
+
+def amp_foothold_v2_double_critic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """:func:`foothold_v2_double_critic_ppo_runner_cfg` + AMP."""
+  return amp_runner_cfg(foothold_v2_double_critic_ppo_runner_cfg())
+
+
+def amp_double_critic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """:func:`double_critic_ppo_runner_cfg` (group 2 = ``foothold``) + AMP."""
+  return amp_runner_cfg(double_critic_ppo_runner_cfg())
+
+
 def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return RslRlOnPolicyRunnerCfg(
     actor=AmeModelCfg(
@@ -267,6 +301,10 @@ def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
 
 __all__ = [
   "FOOTHOLD_V2_GROUP_TERMS",
+  "AmpDoubleCriticPpoCfg",
+  "amp_double_critic_ppo_runner_cfg",
+  "amp_foothold_v2_double_critic_ppo_runner_cfg",
+  "amp_runner_cfg",
   "GOAL_SYMMETRY_FUNC",
   "NUM_MINI_BATCHES",
   "AmeModelCfg",

@@ -77,6 +77,14 @@ reused on other tasks.  Importing the package (mjlab does it through the
   0.1 s of stance, delta 0.05 m, weight -1, double-critic group 2) and a
   ``progress_shortfall`` term (max(0, 0.8 - progress ratio over 1 s), weight -2,
   group 1) (:mod:`ame.mdp.foothold_v2`, notes/feasibility_v2/report.md).
+* ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdV2-Progress-AMP-Velocity-Rough-G1``
+  — the FootholdV2-Progress task exactly, trained with AMP (:mod:`ame.amp`:
+  AMP_mjlab's 17 walk / jog / idle-turn clips, style reward in group 1).
+* ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-AME2Contact-FootholdD30-AMP-Velocity-Rough-G1``
+  — the FootholdD30 task with AME-2's contact rule (no termination on a
+  non-foot contact, which ``undesired_contacts`` penalises; termination on a
+  torso / pelvis force > 400 N after 1 s), trained with AMP
+  (notes/amp_check/report.md).
 
 Train / play with mjlab's own CLIs::
 
@@ -93,6 +101,7 @@ from mjlab.tasks.registry import register_mjlab_task
 from ame.env_cfg import (
   EDGE_DISTANCE,
   STRIDE_FREE_WALKING_STD_SCALE,
+  ame_gap_ame2_contact_env_cfg,
   ame_gap_ar_stag_env_cfg,
   ame_gap_env_cfg,
   ame_gap_foothold_v2_env_cfg,
@@ -102,6 +111,8 @@ from ame.env_cfg import (
 )
 from ame.mdp.sgs import ALPHANIST_SGS_PARAMS, UNIFORM_MIX_KEY
 from ame.rl_cfg import (
+  amp_double_critic_ppo_runner_cfg,
+  amp_foothold_v2_double_critic_ppo_runner_cfg,
   ame_symmetric_ppo_runner_cfg,
   delta_ppo_runner_cfg,
   double_critic_ppo_runner_cfg,
@@ -464,4 +475,26 @@ register_mjlab_task(
   env_cfg=ame_gap_foothold_v2_env_cfg(**FOOTHOLD_D30_TRAIN_FLAGS),
   play_env_cfg=ame_gap_foothold_v2_env_cfg(play=True, **FOOTHOLD_D30_GAP_FLAGS),
   rl_cfg=foothold_v2_double_critic_ppo_runner_cfg(),
+)
+
+FOOTHOLD_V2_PROGRESS_AMP_TASK = (
+  "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdV2-Progress-AMP-Velocity-Rough-G1"
+)
+
+register_mjlab_task(
+  task_id=FOOTHOLD_V2_PROGRESS_AMP_TASK,
+  env_cfg=ame_gap_foothold_v2_env_cfg(**FOOTHOLD_D30_TRAIN_FLAGS),
+  play_env_cfg=ame_gap_foothold_v2_env_cfg(play=True, **FOOTHOLD_D30_GAP_FLAGS),
+  rl_cfg=amp_foothold_v2_double_critic_ppo_runner_cfg(),
+)
+
+AME2_CONTACT_D30_AMP_TASK = (
+  "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-AME2Contact-FootholdD30-AMP-Velocity-Rough-G1"
+)
+
+register_mjlab_task(
+  task_id=AME2_CONTACT_D30_AMP_TASK,
+  env_cfg=ame_gap_ame2_contact_env_cfg(**FOOTHOLD_D30_TRAIN_FLAGS),
+  play_env_cfg=ame_gap_ame2_contact_env_cfg(play=True, **FOOTHOLD_D30_GAP_FLAGS),
+  rl_cfg=amp_double_critic_ppo_runner_cfg(),
 )

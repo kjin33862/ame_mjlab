@@ -26,7 +26,12 @@ from mjlab.managers.termination_manager import TerminationTermCfg as DoneTerm
 from mjlab.sensor import ContactMatch, ContactSensorCfg
 
 from ame.mdp import rewards as ame_rew
-from ame.mdp.terminations import bad_orientation, illegal_contact, physics_blowup
+from ame.mdp.terminations import (
+  ame2_torso_collision,
+  bad_orientation,
+  illegal_contact,
+  physics_blowup,
+)
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnvCfg
@@ -272,6 +277,53 @@ def illegal_contact_term() -> DoneTerm:
   )
 
 
+TORSO_CONTACT_SENSOR = "torso_contact"
+AME2_TORSO_BODIES = ("torso_link", "pelvis")
+"""AME-2 terminates on ``torso_link`` / ``pelvis_contour_link``; our G1's
+pelvis collision geoms belong to ``pelvis``."""
+AME2_TORSO_FORCE = 400.0
+"""AME-2's threshold (``robot_weight`` 400 N in ame2_env_cfg.py)."""
+AME2_TORSO_START_TIME = 1.0
+
+
+def torso_contact_sensor_cfg(history_length: int) -> ContactSensorCfg:
+  """Net contact force on the torso and pelvis with a substep history
+  (``history_length`` = decimation, i.e. one policy step, as AME-2's 4)."""
+  return ContactSensorCfg(
+    name=TORSO_CONTACT_SENSOR,
+    primary=ContactMatch(
+      mode="body", pattern=tuple(f"^{b}$" for b in AME2_TORSO_BODIES), entity="robot"
+    ),
+    fields=("found", "force"),
+    reduce="netforce",
+    num_slots=1,
+    history_length=history_length,
+  )
+
+
+def apply_ame2_torso_termination(cfg: ManagerBasedRlEnvCfg) -> None:
+  """AME-2's contact rule on a task with :func:`apply_ame2_contact`, in place:
+  the ``illegal_contact`` termination (any non-foot link > 1 N) is removed, and
+  ``torso_collision`` (:func:`ame.mdp.terminations.ame2_torso_collision`: torso
+  or pelvis force averaged over one policy step > 400 N, after 1 s) is added.
+  Non-foot contacts stay penalised by the existing ``undesired_contacts``
+  (weight -1); every other termination and reward is kept."""
+  if "illegal_contact" not in cfg.terminations or "undesired_contacts" not in cfg.rewards:
+    raise ValueError("apply_ame2_torso_termination needs apply_ame2_contact first")
+  del cfg.terminations["illegal_contact"]
+  sensors = list(cfg.scene.sensors or ())
+  sensors.append(torso_contact_sensor_cfg(cfg.decimation))
+  cfg.scene.sensors = tuple(sensors)
+  cfg.terminations["torso_collision"] = DoneTerm(
+    func=ame2_torso_collision,
+    params={
+      "sensor_name": TORSO_CONTACT_SENSOR,
+      "threshold": AME2_TORSO_FORCE,
+      "start_time": AME2_TORSO_START_TIME,
+    },
+  )
+
+
 AME2_CONTACT_REWARDS = ("undesired_contacts", "termination_penalty")
 """The contact-related terms of the ``ame2_rebalanced`` stack."""
 
@@ -322,6 +374,8 @@ __all__ = [
   "UNDESIRED_CONTACT_SENSOR",
   "ame2_rewards",
   "apply_ame2_contact",
+  "apply_ame2_torso_termination",
+  "torso_contact_sensor_cfg",
   "apply_ame2_rewards",
   "illegal_contact_term",
   "undesired_contact_sensor_cfg",

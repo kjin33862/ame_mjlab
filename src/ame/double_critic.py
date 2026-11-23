@@ -178,7 +178,11 @@ class DoubleCriticPPO(PPO):
   def process_env_step(self, obs, rewards, dones, extras) -> None:
     if self.reward_groups is None:
       raise RuntimeError("bind_reward_groups(env) was not called")
-    super().process_env_step(obs, self.reward_groups(rewards), dones, extras)
+    super().process_env_step(obs, self.group_rewards(rewards), dones, extras)
+
+  def group_rewards(self, rewards: torch.Tensor) -> torch.Tensor:
+    """``[B]`` env reward -> ``[B, 2]`` group rewards (a hook for subclasses)."""
+    return self.reward_groups(rewards)
 
   def compute_returns(self, obs: TensorDict) -> None:
     st = self.storage

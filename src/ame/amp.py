@@ -293,16 +293,44 @@ class AmpDoubleCriticPPO(DoubleCriticPPO):
     self.discriminator = Discriminator(2 * dim, amp_discr_hidden_dims).to(self.device)
     self.amp_normalizer = AmpNormalizer(dim).to(self.device)
     self.amp_buffer = ReplayBuffer(dim, int(amp_replay_buffer_size), self.device)
-    self.optimizer.add_param_group(
-      {"params": self.discriminator.trunk.parameters(), "weight_decay": AMP_TRUNK_WEIGHT_DECAY}
-    )
-    self.optimizer.add_param_group(
-      {"params": self.discriminator.amp_linear.parameters(), "weight_decay": AMP_HEAD_WEIGHT_DECAY}
-    )
+    self._attach_discriminator_optimizer()
     self.motion: MotionData | None = None
     self._robot = None
     self._amp_obs: torch.Tensor | None = None
     self._style: torch.Tensor | None = None
+    self._rollout = {"style": 0.0, "d_policy_rollout": 0.0, "n": 0}
+
+  def _discriminator_param_groups(self) -> list[dict]:
+    return [
+      {"params": self.discriminator.trunk.parameters(), "weight_decay": AMP_TRUNK_WEIGHT_DECAY},
+      {"params": self.discriminator.amp_linear.parameters(), "weight_decay": AMP_HEAD_WEIGHT_DECAY},
+    ]
+
+  def _attach_discriminator_optimizer(self) -> None:
+    """Here: the discriminator joins the PPO Adam (one step per PPO minibatch)."""
+    for group in self._discriminator_param_groups():
+      self.optimizer.add_param_group(group)
+
+  def _disc_loss(self, ps, pns, es, ens) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """LSGAN loss and gradient penalty of one discriminator minibatch;
+    returns ``(amp_loss, grad_pen, D(policy), D(expert))``."""
+    n = self.amp_normalizer
+    with torch.no_grad():
+      ps_n, pns_n, es_n, ens_n = (n.normalize(x) for x in (ps, pns, es, ens))
+    d_p = self.discriminator(torch.cat([ps_n, pns_n], dim=-1))
+    d_e = self.discriminator(torch.cat([es_n, ens_n], dim=-1))
+    amp_loss = 0.5 * (
+      nn.functional.mse_loss(d_e, torch.ones_like(d_e))
+      + nn.functional.mse_loss(d_p, -torch.ones_like(d_p))
+    )
+    gp = self.discriminator.grad_pen(es, ens, self.amp_grad_pen_lambda)
+    return amp_loss, gp, d_p, d_e
+
+  def _rollout_stats(self, losses: dict[str, float]) -> None:
+    r = self._rollout
+    if r["n"]:
+      losses["amp_style_reward"] = r["style"] / r["n"]
+      losses["amp_d_policy_rollout"] = r["d_policy_rollout"] / r["n"]
     self._rollout = {"style": 0.0, "d_policy_rollout": 0.0, "n": 0}
 
   # -- binding -----------------------------------------------------------------
@@ -379,15 +407,7 @@ class AmpDoubleCriticPPO(DoubleCriticPPO):
       ps, pns = next(policy_gen)
       es, ens = next(expert_gen)
       n = self.amp_normalizer
-      with torch.no_grad():
-        ps_n, pns_n, es_n, ens_n = (n.normalize(x) for x in (ps, pns, es, ens))
-      d_p = self.discriminator(torch.cat([ps_n, pns_n], dim=-1))
-      d_e = self.discriminator(torch.cat([es_n, ens_n], dim=-1))
-      amp_loss = 0.5 * (
-        nn.functional.mse_loss(d_e, torch.ones_like(d_e))
-        + nn.functional.mse_loss(d_p, -torch.ones_like(d_p))
-      )
-      gp = self.discriminator.grad_pen(es, ens, self.amp_grad_pen_lambda)
+      amp_loss, gp, d_p, d_e = self._disc_loss(ps, pns, es, ens)
       (amp_loss + gp).backward()
       out = step(*args, **kwargs)
       n.update(ps)
@@ -408,11 +428,7 @@ class AmpDoubleCriticPPO(DoubleCriticPPO):
       raise RuntimeError(f"discriminator stepped {count[0]} times, expected {n_mb}")
     for k, v in acc.items():
       losses[k] = v / count[0]
-    r = self._rollout
-    if r["n"]:
-      losses["amp_style_reward"] = r["style"] / r["n"]
-      losses["amp_d_policy_rollout"] = r["d_policy_rollout"] / r["n"]
-    self._rollout = {"style": 0.0, "d_policy_rollout": 0.0, "n": 0}
+    self._rollout_stats(losses)
     return losses
 
   # -- checkpoint ----------------------------------------------------------------
@@ -440,7 +456,116 @@ class AmpDoubleCriticPPO(DoubleCriticPPO):
     return out
 
 
+# ------------------------------------------------------------------ AMPv2
+AMP_V2_DISC_LEARNING_RATE = 1.0e-3
+"""AMP_mjlab ``config/g1/rl_cfg.py:59`` ``learning_rate`` (also ``amp_ppo.py:54``)."""
+AMP_V2_DISC_NUM_LEARNING_EPOCHS = 5
+"""AMP_mjlab ``config/g1/rl_cfg.py:57``."""
+AMP_V2_DISC_NUM_MINI_BATCHES = 4
+"""AMP_mjlab ``config/g1/rl_cfg.py:58``."""
+
+
+class AmpV2DoubleCriticPPO(AmpDoubleCriticPPO):
+  """:class:`AmpDoubleCriticPPO` with the discriminator trained on the
+  reference's schedule instead of riding our PPO minibatches.
+
+  The reference (AMP_mjlab ``amp_ppo.py:252-262``) takes one discriminator step
+  per PPO minibatch, i.e. ``num_learning_epochs * num_mini_batches`` = 5 * 4 = 20
+  steps per iteration of ``num_envs * num_steps_per_env // 4`` transitions.  Our
+  PPO uses 16 minibatches (80 steps of N*T/16), so here the discriminator has its
+  own loop and its own Adam:
+
+  * 5 * 4 = 20 steps per iteration, minibatch ``N * T // 4`` (6144 at 1024 envs,
+    T = 24), policy pairs from the replay buffer, expert pairs from the clips;
+  * Adam, weight decay 1e-3 trunk / 1e-1 head (``amp_ppo.py:129-130``), a FIXED
+    learning rate 1e-3 (the reference's initial rate; the reference itself shares
+    the PPO Adam and so follows its adaptive-KL rate, ``rl_cfg.py:60,63``), no
+    gradient clipping (the reference clips the policy only, ``amp_ppo.py:467``);
+  * LSGAN loss + gradient penalty 10 on the unnormalised expert pairs, loss
+    coefficient 1 (``amp_ppo.py:114,446-450``); the normaliser is updated after
+    each step with that minibatch's policy and expert states (``:497-499``).
+
+  The PPO optimizer therefore holds the policy only, exactly as without AMP.
+  Everything else (observation, clips, style reward, the group-1 mix) is the
+  base class's."""
+
+  def __init__(
+    self,
+    actor,
+    critic,
+    storage,
+    amp_disc_learning_rate: float = AMP_V2_DISC_LEARNING_RATE,
+    amp_disc_num_learning_epochs: int = AMP_V2_DISC_NUM_LEARNING_EPOCHS,
+    amp_disc_num_mini_batches: int = AMP_V2_DISC_NUM_MINI_BATCHES,
+    **kwargs,
+  ) -> None:
+    self.amp_disc_learning_rate = float(amp_disc_learning_rate)
+    self.amp_disc_num_learning_epochs = int(amp_disc_num_learning_epochs)
+    self.amp_disc_num_mini_batches = int(amp_disc_num_mini_batches)
+    super().__init__(actor, critic, storage, **kwargs)
+
+  def _attach_discriminator_optimizer(self) -> None:
+    self.disc_optimizer = torch.optim.Adam(
+      self._discriminator_param_groups(), lr=self.amp_disc_learning_rate
+    )
+
+  def disc_schedule(self) -> tuple[int, int]:
+    """``(steps per iteration, minibatch size)``."""
+    steps = self.amp_disc_num_learning_epochs * self.amp_disc_num_mini_batches
+    mbs = (
+      self.storage.num_envs * self.storage.num_transitions_per_env
+      // self.amp_disc_num_mini_batches
+    )
+    return steps, mbs
+
+  def update_discriminator(self) -> dict[str, float]:
+    steps, mbs = self.disc_schedule()
+    policy_gen = self.amp_buffer.feed_forward_generator(steps, mbs)
+    expert_gen = self.motion.feed_forward_generator(steps, mbs)
+    acc = {"amp_loss": 0.0, "amp_grad_pen": 0.0, "amp_d_policy": 0.0, "amp_d_expert": 0.0}
+    count = 0
+    for (ps, pns), (es, ens) in zip(policy_gen, expert_gen):
+      amp_loss, gp, d_p, d_e = self._disc_loss(ps, pns, es, ens)
+      self.disc_optimizer.zero_grad()
+      (amp_loss + gp).backward()
+      self.disc_optimizer.step()
+      self.amp_normalizer.update(ps)
+      self.amp_normalizer.update(es)
+      acc["amp_loss"] += amp_loss.item()
+      acc["amp_grad_pen"] += gp.item()
+      acc["amp_d_policy"] += d_p.mean().item()
+      acc["amp_d_expert"] += d_e.mean().item()
+      count += 1
+    if count != steps:
+      raise RuntimeError(f"discriminator stepped {count} times, expected {steps}")
+    out = {k: v / count for k, v in acc.items()}
+    out["amp_disc_updates"] = float(count)
+    out["amp_disc_mini_batch_size"] = float(mbs)
+    out["amp_disc_lr"] = float(self.disc_optimizer.param_groups[0]["lr"])
+    return out
+
+  def update(self) -> dict[str, float]:
+    losses = DoubleCriticPPO.update(self)
+    losses.update(self.update_discriminator())
+    self._rollout_stats(losses)
+    return losses
+
+  def save(self) -> dict:
+    saved = super().save()
+    saved["amp_disc_optimizer_state_dict"] = self.disc_optimizer.state_dict()
+    return saved
+
+  def load(self, loaded_dict: dict, load_cfg: dict | None, strict: bool) -> bool:
+    out = super().load(loaded_dict, load_cfg, strict)
+    if (load_cfg is None or load_cfg.get("optimizer")) and (
+      "amp_disc_optimizer_state_dict" in loaded_dict
+    ):
+      self.disc_optimizer.load_state_dict(loaded_dict["amp_disc_optimizer_state_dict"])
+    return out
+
+
 __all__ = [
+  "AmpV2DoubleCriticPPO",
   "AMP_ANCHOR_NAME",
   "AMP_BODY_NAMES",
   "AMP_CLIPS",

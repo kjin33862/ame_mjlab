@@ -15,6 +15,7 @@ from ame.amp import (
   AMP_BODY_NAMES,
   AMP_CLIPS,
   AmpDoubleCriticPPO,
+  AmpV2DoubleCriticPPO,
   AmpNormalizer,
   Discriminator,
   ReplayBuffer,
@@ -25,6 +26,7 @@ from ame.mdp.terminations import ame2_torso_collision
 V2_TASK = "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdV2-Progress-Velocity-Rough-G1"
 D30_TASK = "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-Velocity-Rough-G1"
 AMP1 = "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdV2-Progress-AMP-Velocity-Rough-G1"
+AMPV2 = "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-AMPv2-Velocity-Rough-G1"
 AMP2 = "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-AME2Contact-FootholdD30-AMP-Velocity-Rough-G1"
 
 
@@ -176,6 +178,54 @@ def test_task2_contact_rule():
   assert _ser(cfg.rewards) == _ser(base.rewards)
   alg = _plain(load_rl_cfg(AMP2))["algorithm"]
   assert alg["reward_group_terms"] == ("foothold",)
+
+
+def test_ampv2_task_is_d30_plus_ampv2():
+  assert _ser(load_env_cfg(AMPV2)) == _ser(load_env_cfg(D30_TASK))
+  a, b = _plain(load_rl_cfg(AMPV2)), _plain(load_rl_cfg(D30_TASK))
+  alg_a, alg_b = a.pop("algorithm"), b.pop("algorithm")
+  assert a == b
+  assert alg_a["class_name"] == "ame.amp:AmpV2DoubleCriticPPO"
+  amp_keys = {k for k in alg_a if k.startswith("amp_")}
+  assert {k: v for k, v in alg_a.items() if k not in amp_keys | {"class_name"}} == {
+    k: v for k, v in alg_b.items() if k != "class_name"
+  }
+  assert alg_a["reward_group_terms"] == ("foothold",)
+  assert tuple(alg_a["advantage_weights"]) == (1.0, 0.25)
+  assert alg_a["amp_task_reward_lerp"] == 0.5 and alg_a["amp_reward_coef"] == 0.1
+  assert (alg_a["amp_disc_learning_rate"], alg_a["amp_disc_num_learning_epochs"], alg_a["amp_disc_num_mini_batches"]) == (1e-3, 5, 4)
+  assert alg_a["amp_replay_buffer_size"] == 100_000 and alg_a["amp_grad_pen_lambda"] == 10.0
+
+
+def test_ampv2_discriminator_schedule():
+  alg = AmpV2DoubleCriticPPO.__new__(AmpV2DoubleCriticPPO)
+  alg.amp_disc_learning_rate, alg.amp_disc_num_learning_epochs, alg.amp_disc_num_mini_batches = 1e-3, 5, 4
+  alg.amp_grad_pen_lambda = 10.0
+  dim = 3
+  alg.discriminator = Discriminator(2 * dim, (8,))
+  alg.amp_normalizer = AmpNormalizer(dim)
+  alg._attach_discriminator_optimizer()
+  groups = alg.disc_optimizer.param_groups
+  assert [g["weight_decay"] for g in groups] == [1e-3, 1e-1] and all(g["lr"] == 1e-3 for g in groups)
+  alg.storage = SimpleNamespace(num_envs=8, num_transitions_per_env=24)
+  alg.amp_buffer = ReplayBuffer(dim, 100, "cpu")
+  alg.amp_buffer.insert(torch.randn(100, dim), torch.randn(100, dim))
+  sizes = []
+
+  class Expert:
+    def feed_forward_generator(self, n, mbs):
+      for _ in range(n):
+        sizes.append(mbs)
+        yield torch.randn(mbs, dim) + 3, torch.randn(mbs, dim) + 3
+
+  alg.motion = Expert()
+  w0 = alg.discriminator.amp_linear.weight.clone()
+  out = alg.update_discriminator()
+  assert alg.disc_schedule() == (20, 8 * 24 // 4)
+  assert sizes == [48] * 20 and out["amp_disc_updates"] == 20.0 and out["amp_disc_mini_batch_size"] == 48.0
+  assert out["amp_disc_lr"] == 1e-3 and groups[0]["lr"] == 1e-3  # fixed: no scheduler touches it
+  assert not torch.equal(w0, alg.discriminator.amp_linear.weight)
+  assert alg.amp_normalizer.count.item() > 20 * 2 * 48 - 1
 
 
 if __name__ == "__main__":

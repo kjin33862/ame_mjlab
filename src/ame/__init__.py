@@ -80,6 +80,11 @@ reused on other tasks.  Importing the package (mjlab does it through the
 * ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdV2-Progress-AMP-Velocity-Rough-G1``
   — the FootholdV2-Progress task exactly, trained with AMP (:mod:`ame.amp`:
   AMP_mjlab's 17 walk / jog / idle-turn clips, style reward in group 1).
+* ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-AMPv2-Velocity-Rough-G1``
+  — the FootholdD30 task exactly, trained with AMPv2
+  (:class:`ame.amp.AmpV2DoubleCriticPPO`: the discriminator on AMP_mjlab's
+  schedule — own Adam, fixed lr 1e-3, 20 steps of N*T/4 per iteration — and
+  group 1 = 0.5 style + 0.5 task).
 * ``Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-AME2Contact-FootholdD30-AMP-Velocity-Rough-G1``
   — the FootholdD30 task with AME-2's contact rule (no termination on a
   non-foot contact, which ``undesired_contacts`` penalises; termination on a
@@ -113,6 +118,7 @@ from ame.mdp.sgs import ALPHANIST_SGS_PARAMS, UNIFORM_MIX_KEY
 from ame.rl_cfg import (
   amp_double_critic_ppo_runner_cfg,
   amp_foothold_v2_double_critic_ppo_runner_cfg,
+  ampv2_double_critic_ppo_runner_cfg,
   ame_symmetric_ppo_runner_cfg,
   delta_ppo_runner_cfg,
   double_critic_ppo_runner_cfg,
@@ -497,4 +503,35 @@ register_mjlab_task(
   env_cfg=ame_gap_ame2_contact_env_cfg(**FOOTHOLD_D30_TRAIN_FLAGS),
   play_env_cfg=ame_gap_ame2_contact_env_cfg(play=True, **FOOTHOLD_D30_GAP_FLAGS),
   rl_cfg=amp_double_critic_ppo_runner_cfg(),
+)
+
+FOOTHOLD_D30_AMPV2_TASK = (
+  "Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-Contact-FootholdD30-AMPv2-Velocity-Rough-G1"
+)
+
+register_mjlab_task(
+  task_id=FOOTHOLD_D30_AMPV2_TASK,
+  env_cfg=ame_gap_env_cfg(
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    sgs_params=ALPHANIST_MIX20_SGS_PARAMS,
+    centre_spawn=True,
+    edge_distance=EDGE_DISTANCE,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+    **FOOTHOLD_D30_TASK_FLAGS,
+  ),
+  play_env_cfg=ame_gap_env_cfg(
+    play=True,
+    rule="progress",
+    heading_command=True,
+    sgs=True,
+    ang_vel_weight=4.0,
+    ang_vel_z_only=True,
+    ame_contact=True,
+    **FOOTHOLD_D30_TASK_FLAGS,
+  ),
+  rl_cfg=ampv2_double_critic_ppo_runner_cfg(),
 )

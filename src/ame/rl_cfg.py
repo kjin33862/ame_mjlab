@@ -253,6 +253,28 @@ def amp_double_critic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return amp_runner_cfg(double_critic_ppo_runner_cfg())
 
 
+@dataclass
+class AmpV2DoubleCriticPpoCfg(AmpDoubleCriticPpoCfg):
+  """:class:`ame.amp.AmpV2DoubleCriticPPO`: the discriminator on AMP_mjlab's
+  schedule (own Adam, fixed lr 1e-3, 5 epochs x 4 minibatches of N*T/4 per
+  iteration) and ``amp_task_reward_lerp`` 0.5 (group 1 = 0.5 style + 0.5 task)."""
+
+  amp_task_reward_lerp: float = 0.5
+  amp_disc_learning_rate: float = 1.0e-3
+  amp_disc_num_learning_epochs: int = 5
+  amp_disc_num_mini_batches: int = 4
+  class_name: str = "ame.amp:AmpV2DoubleCriticPPO"
+
+
+def ampv2_double_critic_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """:func:`double_critic_ppo_runner_cfg` (group 2 = ``foothold``) + AMPv2."""
+  cfg = double_critic_ppo_runner_cfg()
+  alg = dataclasses.asdict(cfg.algorithm)
+  alg.pop("class_name")
+  cfg.algorithm = AmpV2DoubleCriticPpoCfg(**alg)
+  return cfg
+
+
 def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return RslRlOnPolicyRunnerCfg(
     actor=AmeModelCfg(
@@ -302,9 +324,11 @@ def ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
 __all__ = [
   "FOOTHOLD_V2_GROUP_TERMS",
   "AmpDoubleCriticPpoCfg",
+  "AmpV2DoubleCriticPpoCfg",
   "amp_double_critic_ppo_runner_cfg",
   "amp_foothold_v2_double_critic_ppo_runner_cfg",
   "amp_runner_cfg",
+  "ampv2_double_critic_ppo_runner_cfg",
   "GOAL_SYMMETRY_FUNC",
   "NUM_MINI_BATCHES",
   "AmeModelCfg",

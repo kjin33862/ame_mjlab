@@ -135,3 +135,5 @@ nohup setsid uv run train Ame-Mjlab-Gap-Edge-AlphaNIST-AngW4Z-AME2Contact-Footho
 8. 노트북에서의 속도와 메모리는 측정하지 않았습니다 (이 PC 1024 envs: 약 10.4 s/it).
 
 파일: `notes/amp_check/` 아래 `config_hashes.py`, `config_hashes_{old,new,diff}.txt`, `replay_check.py`, `shape_check.py`, `knee_probe.py`, `knee_probe.txt`, `pytest.txt`, 그림 2개.
+
+**push.** 모든 검사가 통과해서 `git push mine amp`를 시도했지만, 이 PC에 GitHub 자격 증명이 없어 실패했습니다 (`could not read Username for 'https://github.com'`). 커밋은 로컬 branch `amp`에 있습니다. 자격 증명을 설정한 뒤 `cd ~/ame_mjlab_sgs && git push mine amp`를 실행하면 됩니다. 노트북의 1) 단계는 push 이후에 가능합니다.
